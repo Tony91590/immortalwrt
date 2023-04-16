@@ -1,84 +1,76 @@
-name: Bug report
-description: Create a bug report to help us improve
-labels:
-  - bug
-body:
-  - type: textarea
-    id: description
-    attributes:
-      label: Describe the bug
-      description: A clear and concise description of the bug.
-    validations:
-      required: true
-  - type: input
-    id: version
-    attributes:
-      label: ImmortalWrt version
-      description: |
-        The ImmortalWrt release or commit hash where this bug occurs (use command below).
-        ```. /etc/openwrt_release && echo $DISTRIB_REVISION```
-    validations:
-      required: true
-  - type: input
-    id: target
-    attributes:
-      label: ImmortalWrt target/subtarget
-      description: |
-        The ImmortalWrt target and subtarget where this bug is observed (use command below).
-        ```. /etc/openwrt_release && echo $DISTRIB_TARGET```
-    validations:
-      required: true
-  - type: input
-    id: device
-    attributes:
-      label: Device
-      description: |
-        The device exhibiting this bug (if unsure, use command below).
-        ```cat /tmp/sysinfo/model```
-    validations:
-      required: true
-  - type: dropdown
-    id: image_kind
-    attributes:
-      label: Image kind
-      options:
-        - Official downloaded image
-        - Self-built image
-    validations:
-      required: true
-  - type: textarea
-    id: reproduce
-    attributes:
-      label: Steps to reproduce
-      description: Steps to reproduce the reported behaviour.
-  - type: textarea
-    id: behaviour
-    attributes:
-      label: Actual behaviour
-      description: A clear and concise description of what actually happens.
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behaviour
-      description: A clear and concise description of what you expected to happen.
-  - type: textarea
-    id: additional
-    attributes:
-      label: Additional info
-      description: Add any additional info you think might be helfpul.
-  - type: textarea
-    id: diffconfig
-    attributes:
-      label: Diffconfig
-      description: |
-        In case of a self-built image, please attach diffconfig.
-        ```./scripts/diffconfig.sh```
-      render: text
-  - type: checkboxes
-    id: terms
-    attributes:
-      label: Terms
-      description: By submitting this issue, you agree to the terms below.
-      options:
-        - label: I am reporting an issue for ImmortalWrt, not an unsupported fork.
-          required: true
+name: Build IPQ807x
+
+on: workflow_dispatch
+
+jobs:
+    build:
+        name: Prepare and build IPQ807x generic images
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
+            - name: Update and install feeds
+              run: |
+                ./scripts/feeds update -a
+                ./scripts/feeds install -a
+
+            - name: Import full config for IPQ807x NSS Generic
+              run: |
+                mv .full_config .config
+
+            - name: Download package sources
+              run: make download V=s
+
+            - name: Build tools
+              run: |
+                make tools/install -j$(nproc) V=s || \
+                make tools/install V=s
+
+            - name: Build toolchain
+              run: |
+                make toolchain/install -j$(nproc) V=s || \
+                make toolchain/install V=s
+
+            - name: Build target images
+              run: |
+                make -j$(nproc) V=s || \
+                make V=s
+
+            - name: TAR output
+              run: tar -cvf ipq807xx-images.tar bin/targets/ipq807x/generic
+
+            - name: Upload artifacts
+              uses: actions/upload-artifact@v3
+              with:
+                name: ipq807x-images
+                path: ipq807xx-images.tar
+
+    release:
+          name: Make a release
+          runs-on: ubuntu-latest
+          needs: build
+
+          steps:
+            - name: Download the image artifacts
+              uses: actions/download-artifact@v3
+              with:
+                name: ipq807x-images
+
+            - name: Extract the image artifacts
+              run: tar xf ipq807xx-images.tar
+
+            - name: Get the current date
+              run: echo "NOW=$(date +%F-%H%M)" >> $GITHUB_ENV
+
+            - name: Create a release
+              uses: "ncipollo/release-action@v1"
+              with:
+                name: "Updated prebuilt images ${{ env.NOW }}"
+                commit: "master"
+                tag: "ipq807x-${{ env.NOW }}"
+                generateReleaseNotes: true
+                makeLatest: true
+                artifacts: bin/targets/ipq807x/generic/*
+                token: "${{ secrets.GITHUB_TOKEN }}"
