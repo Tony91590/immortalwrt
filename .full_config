@@ -7,7 +7,25 @@ CONFIG_TARGET_OPTIMIZATION="-Os -pipe -mcpu=cortex-a53"
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
 CONFIG_LUCI_LANG_fr=y
 CONFIG_PACKAGE_luci-i18n-upnp-fr=y
+CONFIG_PACKAGE_luci-app-upnp=y
+CONFIG_PACKAGE_luci-app-ttyd=y
+CONFIG_PACKAGE_luci-mod-admin-full=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+CONFIG_PACKAGE_qca-ssdk-shell=y
 
+CONFIG_PACKAGE_luci-app-firewall=y
+CONFIG_PACKAGE_luci-app-opkg=y
+CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-lib-base=y
+CONFIG_PACKAGE_luci-lib-ip=y
+CONFIG_PACKAGE_luci-lib-jsonc=y
+CONFIG_PACKAGE_luci-lib-nixio=y
+CONFIG_PACKAGE_luci-mod-admin-full=y
+CONFIG_PACKAGE_luci-mod-network=y
+CONFIG_PACKAGE_luci-mod-status=y
+CONFIG_PACKAGE_luci-mod-system=y
+CONFIG_PACKAGE_luci-proto-ipv6=y
+CONFIG_PACKAGE_luci-proto-ppp=y
 # MISC
 
 CONFIG_LIBCURL_COOKIES=y	
