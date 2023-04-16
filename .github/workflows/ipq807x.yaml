@@ -16,7 +16,7 @@ jobs:
                 ./scripts/feeds update -a
                 ./scripts/feeds install -a
 
-            - name: Import full config for IPQ807x NSS Generic
+            - name: Import full config for IPQ807x Generic
               run: |
                 mv .full_config .config
 
