@@ -20,21 +20,6 @@ jobs:
               run: |
                 mv .full_config .config
 
-            - name: QoL fixes on default config
-              run: |
-                mkdir -p files/etc/uci-defaults
-                cat > files/etc/uci-defaults/xxx_config << EOF
-                uci set wireless.radio0.country='US'
-                uci set wireless.radio1.country='US'
-                uci set wireless.radio2.country='US'
-                uci set wireless.radio0.disabled=0
-                uci set wireless.radio1.disabled=0
-                uci set wireless.radio2.disabled=0
-                uci set network.globals.packet_steering=1
-                uci set firewall.@defaults[0].flow_offloading='1'
-                uci commit
-                /etc/init.d/firewall restart
-                EOF
 
             - name: Download package sources
               run: make download V=s
@@ -55,7 +40,7 @@ jobs:
                 make V=s
 
             - name: TAR output
-              run: tar -cvf ipq807xx-images.tar bin/targets/ipq807x/generic
+              run: tar -cvf ipq807xx-images.tar bin/targets/mediatek/mt7986
 
             - name: Upload artifacts
               uses: actions/upload-artifact@v3
@@ -88,6 +73,6 @@ jobs:
                 tag: "ipq807x-${{ env.NOW }}"
                 generateReleaseNotes: true
                 makeLatest: true
-                artifacts: bin/targets/ipq807x/generic/*
+                artifacts: bin/targets/mediatek/mt7986/*
                 token: "${{ secrets.GITHUB_TOKEN }}"
 
