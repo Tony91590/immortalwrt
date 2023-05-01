@@ -1,10 +1,10 @@
-name: Build IPQ807x NSS
+name: Build-AX6000 Redmi
 
 on: workflow_dispatch
 
 jobs:
     build:
-        name: Prepare and build IPQ807x NSS generic images
+        name: Prepare and build Build-AX6000 Redmi
         runs-on: ubuntu-latest
 
         steps:
@@ -16,7 +16,7 @@ jobs:
                 ./scripts/feeds update -a
                 ./scripts/feeds install -a
 
-            - name: Import full config for IPQ807x NSS Generic
+            - name: Import full config for Build-AX6000 Redmi
               run: |
                 mv .full_config .config
 
