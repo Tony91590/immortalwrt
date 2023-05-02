@@ -158,10 +158,10 @@ if VERSIONOPT
 	config VERSION_DIST
 		string
 		prompt "Release distribution"
-		default "ImmortalWrt"
+		default "OpenWrt"
 		help
 			This is the name of the release distribution.
-			If unspecified, it defaults to ImmortalWrt.
+			If unspecified, it defaults to OpenWrt.
 
 	config VERSION_NUMBER
 		string
@@ -183,7 +183,7 @@ if VERSIONOPT
 	config VERSION_REPO
 		string
 		prompt "Release repository"
-		default "https://downloads.immortalwrt.org/releases/18.06-k5.4-SNAPSHOT"
+		default "https://downloads.openwrt.org/snapshots"
 		help
 			This is the repository address embedded in the image, it defaults
 			to the trunk snapshot repo; the url may contain the following placeholders:
