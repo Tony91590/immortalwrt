@@ -19,7 +19,7 @@ define Package/default-settings
   CATEGORY:=LuCI
   TITLE:=LuCI support for Default Settings
   PKGARCH:=all
-  DEPENDS:=+luci-base +luci +@LUCI_LANG_en
+  DEPENDS:=+luci-base +luci +@LUCI_LANG_en +@LUCI_LANG_fr
 endef
 
 define Build/Compile
