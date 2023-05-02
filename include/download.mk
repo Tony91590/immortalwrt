@@ -1,7 +1,10 @@
-# SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright (C) 2006-2012 OpenWrt.org
 # Copyright (C) 2016 LEDE project
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
 
 PROJECT_GIT = https://git.openwrt.org
 
@@ -9,32 +12,24 @@ OPENWRT_GIT = $(PROJECT_GIT)
 LEDE_GIT = $(PROJECT_GIT)
 
 ifdef PKG_SOURCE_VERSION
-  ifndef PKG_VERSION
-    PKG_VERSION := $(if $(PKG_SOURCE_DATE),$(PKG_SOURCE_DATE)-)$(call version_abbrev,$(PKG_SOURCE_VERSION))
-  endif
-  PKG_SOURCE_SUBDIR ?= $(PKG_NAME)-$(PKG_VERSION)
-  PKG_SOURCE ?= $(PKG_SOURCE_SUBDIR).tar.xz
+PKG_VERSION ?= $(if $(PKG_SOURCE_DATE),$(PKG_SOURCE_DATE)-)$(call version_abbrev,$(PKG_SOURCE_VERSION))
+PKG_SOURCE_SUBDIR ?= $(PKG_NAME)-$(PKG_VERSION)
+PKG_SOURCE ?= $(PKG_SOURCE_SUBDIR).tar.xz
 endif
 
 DOWNLOAD_RDEP=$(STAMP_PREPARED) $(HOST_STAMP_PREPARED)
 
-define dl_method_git
-$(if $(filter https://github.com/% git://github.com/%,$(1)),github_archive,git)
-endef
-
 # Try to guess the download method from the URL
 define dl_method
 $(strip \
-  $(if $(filter git,$(2)),$(call dl_method_git,$(1),$(2)),
-    $(if $(2),$(2), \
-      $(if $(filter @OPENWRT @APACHE/% @DEBIAN/% @GITHUB/% @GNOME/% @GNU/% @KERNEL/% @SF/% @SAVANNAH/% ftp://% http://% https://% file://%,$(1)),default, \
-        $(if $(filter git://%,$(1)),$(call dl_method_git,$(1),$(2)), \
-          $(if $(filter svn://%,$(1)),svn, \
-            $(if $(filter cvs://%,$(1)),cvs, \
-              $(if $(filter hg://%,$(1)),hg, \
-                $(if $(filter sftp://%,$(1)),bzr, \
-                  unknown \
-                ) \
+  $(if $(2),$(2), \
+    $(if $(filter @APACHE/% @GITHUB/% @GNOME/% @GNU/% @KERNEL/% @SF/% @SAVANNAH/% ftp://% http://% https://% file://%,$(1)),default, \
+      $(if $(filter git://%,$(1)),git, \
+        $(if $(filter svn://%,$(1)),svn, \
+          $(if $(filter cvs://%,$(1)),cvs, \
+            $(if $(filter hg://%,$(1)),hg, \
+              $(if $(filter sftp://%,$(1)),bzr, \
+                unknown \
               ) \
             ) \
           ) \
@@ -49,39 +44,18 @@ endef
 dl_pack/bz2=bzip2 -c > $(1)
 dl_pack/gz=gzip -nc > $(1)
 dl_pack/xz=xz -zc -7e > $(1)
-dl_pack/zst=zstd -T0 --ultra -20 -c > $(1)
 dl_pack/unknown=$(error ERROR: Unknown pack format for file $(1))
 define dl_pack
 	$(if $(dl_pack/$(call ext,$(1))),$(dl_pack/$(call ext,$(1))),$(dl_pack/unknown))
 endef
 define dl_tar_pack
-	$(TAR) --numeric-owner --owner=0 --group=0 --mode=a-s --sort=name \
-		$$$${TAR_TIMESTAMP:+--mtime="$$$$TAR_TIMESTAMP"} -c $(2) | $(call dl_pack,$(1))
-endef
-
-gen_sha256sum = $(shell $(MKHASH) sha256 $(DL_DIR)/$(1))
-
-# Used in Build/CoreTargets and HostBuild/Core as an integrity check for
-# downloaded files.  It will add a FORCE rule if the sha256 hash does not
-# match, so that the download can be more thoroughly handled by download.pl.
-define check_download_integrity
-  expected_hash:=$(strip $(if $(filter-out x,$(HASH)),$(HASH),$(MIRROR_HASH)))
-  $$(if $$(and $(FILE),$$(wildcard $(DL_DIR)/$(FILE)), \
-	       $$(filter undefined,$$(flavor DownloadChecked/$(FILE)))), \
-    $$(eval DownloadChecked/$(FILE):=1) \
-    $$(if $$(filter-out $$(call gen_sha256sum,$(FILE)),$$(expected_hash)), \
-      $(DL_DIR)/$(FILE): FORCE) \
-  )
+	$(TAR) --numeric-owner --owner=0 --group=0 --sort=name $$$${TAR_TIMESTAMP:+--mtime="$$$$TAR_TIMESTAMP"} -c $(2) | $(call dl_pack,$(1))
 endef
 
 ifdef CHECK
 check_escape=$(subst ','\'',$(1))
 #')
 
-# $(1): suffix of the F_, C_ variables, e.g. hash_deprecated, hash_mismatch, etc.
-# $(2): filename
-# $(3): expected hash value
-# $(4): var name of the the form: {PKG_,Download/<name>:}{,MIRROR_}{HASH,MIRROR_HASH}
 check_warn_nofix = $(info $(shell printf "$(_R)WARNING: %s$(_N)" '$(call check_escape,$(call C_$(1),$(2),$(3),$(4)))'))
 ifndef FIXUP
   check_warn = $(check_warn_nofix)
@@ -89,23 +63,19 @@ else
   check_warn = $(if $(filter-out undefined,$(origin F_$(1))),$(filter ,$(shell $(call F_$(1),$(2),$(3),$(4)) >&2)),$(check_warn_nofix))
 endif
 
+gen_sha256sum = $(shell mkhash sha256 $(DL_DIR)/$(1))
+
 ifdef FIXUP
 F_hash_deprecated = $(SCRIPT_DIR)/fixup-makefile.pl $(CURDIR)/Makefile fix-hash $(3) $(call gen_sha256sum,$(1)) $(2)
 F_hash_mismatch = $(F_hash_deprecated)
 F_hash_missing = $(SCRIPT_DIR)/fixup-makefile.pl $(CURDIR)/Makefile add-hash $(3) $(call gen_sha256sum,$(1))
 endif
 
-# $(1): filename
-# $(2): expected hash value
-# $(3): var name of the the form: {PKG_,Download/<name>:}{,MIRROR_}{HASH,MIRROR_HASH}
 C_download_missing = $(1) is missing, please run make download before re-running this check
 C_hash_mismatch = $(3) does not match $(1) hash $(call gen_sha256sum,$(1))
 C_hash_deprecated = $(3) uses deprecated hash, set to $(call gen_sha256sum,$(1))
 C_hash_missing = $(3) is missing, set to $(call gen_sha256sum,$(1))
 
-# $(1): filename
-# $(2): expected hash value
-# $(3): var name of the the form: {PKG_,Download/<name>:}{,MIRROR_}{HASH,MIRROR_HASH}
 check_hash = \
   $(if $(wildcard $(DL_DIR)/$(1)), \
     $(if $(filter-out x,$(2)), \
@@ -146,9 +116,6 @@ define DownloadMethod/default
 	)
 endef
 
-# $(1): "check"
-# $(2): "PKG_" if <name> as in Download/<name> is "default", otherwise "Download/<name>:"
-# $(3): shell command sequence to do the download
 define wrap_mirror
 $(if $(if $(MIRROR),$(filter-out x,$(MIRROR_HASH))),$(SCRIPT_DIR)/download.pl "$(DL_DIR)" "$(FILE)" "$(MIRROR_HASH)" "" || ( $(3) ),$(3)) \
 $(if $(filter check,$(1)), \
@@ -192,39 +159,21 @@ endef
 
 define DownloadMethod/git
 	$(call wrap_mirror,$(1),$(2), \
-		$(call DownloadMethod/rawgit) \
+		echo "Checking out files from the git repository..."; \
+		mkdir -p $(TMP_DIR)/dl && \
+		cd $(TMP_DIR)/dl && \
+		rm -rf $(SUBDIR) && \
+		[ \! -d $(SUBDIR) ] && \
+		git clone $(OPTS) $(URL) $(SUBDIR) && \
+		(cd $(SUBDIR) && git checkout $(VERSION) && \
+		git submodule update --init --recursive) && \
+		echo "Packing checkout..." && \
+		export TAR_TIMESTAMP=`cd $(SUBDIR) && git log -1 --format='@%ct'` && \
+		rm -rf $(SUBDIR)/.git && \
+		$(call dl_tar_pack,$(TMP_DIR)/dl/$(FILE),$(SUBDIR)) && \
+		mv $(TMP_DIR)/dl/$(FILE) $(DL_DIR)/ && \
+		rm -rf $(SUBDIR); \
 	)
-endef
-
-define DownloadMethod/github_archive
-	$(call wrap_mirror,$(1),$(2), \
-		$(SCRIPT_DIR)/dl_github_archive.py \
-			--dl-dir="$(DL_DIR)" \
-			--url="$(URL)" \
-			--version="$(VERSION)" \
-			--subdir="$(SUBDIR)" \
-			--source="$(FILE)" \
-			--hash="$(MIRROR_HASH)" \
-		|| ( $(call DownloadMethod/rawgit) ); \
-	)
-endef
-
-# Only intends to be called as a submethod from other DownloadMethod
-define DownloadMethod/rawgit
-	echo "Checking out files from the git repository..."; \
-	mkdir -p $(TMP_DIR)/dl && \
-	cd $(TMP_DIR)/dl && \
-	rm -rf $(SUBDIR) && \
-	[ \! -d $(SUBDIR) ] && \
-	git clone $(OPTS) $(URL) $(SUBDIR) && \
-	(cd $(SUBDIR) && git checkout $(VERSION) && \
-	git submodule update --init --recursive) && \
-	echo "Packing checkout..." && \
-	export TAR_TIMESTAMP=`cd $(SUBDIR) && git log -1 --format='@%ct'` && \
-	rm -rf $(SUBDIR)/.git && \
-	$(call dl_tar_pack,$(TMP_DIR)/dl/$(FILE),$(SUBDIR)) && \
-	mv $(TMP_DIR)/dl/$(FILE) $(DL_DIR)/ && \
-	rm -rf $(SUBDIR);
 endef
 
 define DownloadMethod/bzr
@@ -302,7 +251,6 @@ endef
 define Download/default
   FILE:=$(PKG_SOURCE)
   URL:=$(PKG_SOURCE_URL)
-  URL_FILE:=$(PKG_SOURCE_URL_FILE)
   SUBDIR:=$(PKG_SOURCE_SUBDIR)
   PROTO:=$(PKG_SOURCE_PROTO)
   $(if $(PKG_SOURCE_MIRROR),MIRROR:=$(filter 1,$(PKG_MIRROR)))
