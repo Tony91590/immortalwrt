@@ -1,1 +1,440 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
 
+msgid "Auto"
+msgstr "Auto"
+
+msgid "Disable"
+msgstr "Disable"
+
+msgid "Enable"
+msgstr "Enable"
+
+msgid "Mandatory"
+msgstr "Mandatory"
+
+msgid "Always On"
+msgstr "Always On"
+
+msgid "Always Off"
+msgstr "Always Off"
+
+msgid "Tempature"
+msgstr "Tempature"
+
+msgid "Driver version"
+msgstr "Driver version"
+
+msgid "Current Band"
+msgstr "Current Band"
+
+msgid "Work mode"
+msgstr "Work mode"
+
+msgid "CONFIG"
+msgstr "CONFIG"
+
+msgid "RELOAD"
+msgstr "RELOAD"
+
+msgid "ADD"
+msgstr "ADD"
+
+msgid "RECONNECT"
+msgstr "RECONNECT"
+
+msgid "DISABLE"
+msgstr "DISABLE"
+
+msgid "ENABLE"
+msgstr "ENABLE"
+
+msgid "REMOVE"
+msgstr "REMOVE
+
+msgid "Station List"
+msgstr "Station List
+
+msgid "Interface"
+msgstr "Interface
+
+msgid "MAC-Address"
+msgstr "MAC-Address"
+
+msgid "Signal"
+msgstr "Signal"
+
+msgid "TX Rate"
+msgstr "TX Rate"
+
+msgid "Rx Rate"
+msgstr "Rx Rate"
+
+msgid "Connected Time"
+msgstr "Connected Time""
+
+msgid "Channel"
+msgstr "Channel
+
+msgid "Security Mode"
+msgstr "Security Mode"
+
+msgid "Action"
+msgstr "Action
+
+msgid "Choose This"
+msgstr "Choose This"
+
+msgid "40MHz HT Ext Channel"
+msgstr "40MHz HT Ext Channel"
+
+msgid "80MHz Second VHT Channel"
+msgstr "80MHz Second VHT Channel"
+
+msgid "Type"
+msgstr "Type"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "DISCONNECT"
+msgstr "DISCONNECT"
+
+msgid "Connected"
+msgstr "Connected"
+
+msgid "Disconnected"
+msgstr "Disconnected"
+
+msgid "Wireless is disabled or not associated"
+msgstr "Wireless is disabled or not associated"
+
+msgid "Processing request."
+msgstr "Processing request."
+
+msgid "need reload to apply changes"
+msgstr "need reload to apply changes"
+
+msgid "Click here"
+msgstr "Click here"
+
+msgid "to apply changes"
+msgstr "to apply changes"
+
+msgid "Wireless Mode"
+msgstr "Wireless Mode"
+
+msgid "Chip Configurations"
+msgstr "Chip Configurations"
+
+msgid "Device Configuration"
+msgstr "Device Configuration"
+
+msgid "Interface Configurations"
+msgstr "Interface Configurations"
+
+msgid "ApCli Configurations"
+msgstr "ApCli Configurations"
+
+msgid "ApCli Available Wireless Networks"
+msgstr "ApCli Available Wireless Networks"
+
+msgid "ApCli Connection Configurations"
+msgstr "ApCli Connection Configurations"
+
+msgid "Decline BA Request"
+msgstr Decline BA Request"
+
+msgid "Reverse Direction Grant (RDG)"
+msgstr "Reverse Direction Grant (RDG)"
+
+msgid "BA Win size"
+msgstr "BA Win size"
+
+msgid "HT Disallow TKIP"
+msgstr "HT Disallow TKIP"
+
+msgid "Wi-Fi HWNAT"
+msgstr "Wi-Fi HWNAT"
+
+msgid "E2pAccessMode"
+msgstr "E2pAccessMode"
+
+msgid "Beacon Interval"
+msgstr "Beacon Interval"
+
+msgid "Data Beacon Rate (DTIM)"
+msgstr "Data Beacon Rate (DTIM)"
+
+msgid "BG Protection Mode"
+msgstr BG Protection Mode"
+
+msgid "Short Preamble"
+msgstr "Short Preamble"
+
+msgid "TX Burst"
+msgstr "TX Burst"
+
+msgid "Short Slot"
+msgstr "Short Slot"
+
+msgid "Channel Auto"
+msgstr Channel Auto"
+
+msgid "BSS color"
+msgstr "BSS color"
+
+msgid "TWT Support"
+msgstr "TWT Support"
+
+msgid "Country Code"
+msgstr "Country Code"
+
+msgid "Country Region"
+msgstr "Country Region"
+
+msgid "Channel BandWidth"
+msgstr "Channel BandWidth"
+
+msgid "TX Stream"
+msgstr "TX Stream"
+
+msgid "RX Stream"
+msgstr "RX Stream"
+
+msgid "TX Power"
+msgstr "TX Power"
+
+msgid "DFS"
+msgstr "DFS"
+
+msgid "Beam Forming and MIMO Setting"
+msgstr "Beam Forming and MIMO Setting"
+
+msgid "Spatial Reuse"
+msgstr "Spatial Reuse"
+
+msgid "Auth Mode"
+msgstr "Auth Mode"
+
+msgid "Encryption"
+msgstr "Encryption"
+
+msgid "Key Renewal Interval"
+msgstr "Key Renewal Interval"
+
+msgid "Key"
+msgstr "Key"
+
+msgid "MFPC"
+msgstr "MFPC"
+
+msgid "MFPR"
+msgstr "MFPR"
+
+msgid "Hidden SSID"
+msgstr "Hidden SSID"
+
+msgid "AP Isolation"
+msgstr "AP Isolation"
+
+msgid "WMM Capable"
+msgstr "WMM Capable"
+
+msgid "Fixed TX Rate"
+msgstr "Fixed TX Rate"
+
+msgid "HT STBC"
+msgstr "HT STBC"
+
+msgid "HT LDPC"
+msgstr "HT LDPC"
+
+msgid "VHT STBC"
+msgstr "VHT STBC"
+
+msgid "VHT LDPC"
+msgstr "VHT LDPC"
+
+msgid "DLS Capable"
+msgstr "DLS Capable"
+
+msgid "802.11k RRM"
+msgstr "802.11k RRM"
+
+msgid "802.11r FT"
+msgstr "802.11r FT"
+
+msgid "APSD Capable"
+msgstr "APSD Capable"
+
+msgid "Fragment Threshold"
+msgstr "Fragment Threshold"
+
+msgid "RTS Threshold"
+msgstr "RTS Threshold"
+
+msgid "VHT Short GI"
+msgstr "VHT Short GI"
+
+msgid "VHT BW Signaling"
+msgstr "VHT BW Signaling"
+
+msgid "Dynamic"
+msgstr "Dynamic"
+
+msgid "HT Protection"
+msgstr "HT Protection"
+
+msgid "HT Guard Interval"
+msgstr "HT Guard Interval"
+
+msgid "HT Operating Mode"
+msgstr "HT Operating Mode"
+
+msgid "HT Mixed Mode"
+msgstr "HT Mixed Mode"
+
+msgid "HT Green Field"
+msgstr "HT Green Field"
+
+msgid "Auto Block ACK"
+msgstr "Auto Block ACK"
+
+msgid "Access Control"
+msgstr "Access Control"
+
+msgid "Access Policy"
+msgstr "Access Policy"
+
+msgid "Access control MAC address list"
+msgstr "Access control MAC address list"
+
+msgid "White List"
+msgstr "White List"
+
+msgid "Black List"
+msgstr "Black List"
+
+msgid "Basic Settings"
+msgstr "Basic Settings"
+
+msgid "HE Settings"
+msgstr "HE Settings"
+
+msgid "DL OFDMA"
+msgstr "DL OFDMA"
+
+msgid "UL OFDMA"
+msgstr "UL OFDMA"
+
+msgid "DL MU-MIMO"
+msgstr "下行MU-MIMO"
+
+msgid "UL MU-MIMO"
+msgstr "UL MU-MIMO"
+
+msgid "SCAN WIRELESS NETWORK"
+msgstr "SCAN WIRELESS NETWORK"
+
+msgid "Scan Wireless Network"
+msgstr "Scan Wireless Network"
+
+msgid "ApClient Mode"
+msgstr "ApClient Mode"
+
+msgid "ApCliBridge Mode"
+msgstr "ApCliBridge Mode"
+
+msgid "Root AP SSID"
+msgstr "Root AP SSID"
+
+msgid "Root AP Channel"
+msgstr "Root AP Channel"
+
+msgid "Root AP Authentication Mode"
+msgstr "Root AP Authentication Mode"
+
+msgid "Root AP Encryption"
+msgstr "Root AP Encryption"
+
+msgid "Root AP WPA Key"
+msgstr "Root AP WPA Key"
+
+msgid "ApCli MFPC"
+msgstr "ApCli MFPC"
+
+msgid "ApCli MFPR"
+msgstr "ApCli MFPR"
+
+msgid "ApCli MFPSHA256"
+msgstr "ApCli MFPSHA256"
+
+msgid "WEP Default Key"
+msgstr "WEP Default Key"
+
+msgid "Root AP WEP Key"
+msgstr "Root AP WEP Key"
+
+msgid "Length"
+msgstr "Length"
+
+msgid "WEP Key"
+msgstr "WEP Key"
+
+msgid "WEP Key Type"
+msgstr "WEP Key Type"
+
+msgid "PMK Cache Period"
+msgstr "PMK Cache Period"
+
+msgid "WEP for 8021X"
+msgstr "WEP for 8021X"
+
+msgid "Pre-Authentication"
+msgstr "Pre-Authentication"
+
+msgid "Radius Server IP"
+msgstr "Radius Server IP"
+
+msgid "Radius Server Port"
+msgstr "Radius Server Port"
+
+msgid "Radius Key"
+msgstr "Radius Key"
+
+msgid "Radius Session Timeout"
+msgstr "Radius Session Timeout"
+
+msgid "Radius Idle Timeout"
+msgstr "Radius Idle Timeout"
+
+msgid "MFPSHA256"
+msgstr "MFPSHA256"
+
+msgid "Please wait while the settings are being applied."
+msgstr "Please wait while the settings are being applied."
+
+msgid "Please wait while the request is being processed."
+msgstr "Please wait while the request is being processed."
+
+msgid "No wireless device found!"
+msgstr "No wireless device found!"
+
+msgid "Please input a valid radius server port number."
+msgstr "Please input a valid radius server port number."
+
+msgid "The radius shared secret contains invalid characters."
+msgstr "The radius shared secret contains invalid characters."
+
+msgid "Please input a valid session timeout number or u may have left it empty."
+msgstr "Please input a valid session timeout number or u may have left it empty."
+
+msgid "Radius session time out is empty."
+msgstr "Radius session time out is empty."
+
+msgid "Please input a valid idle timeout number or u may have left it empty."
+msgstr "Please input a valid idle timeout number or u may have left it empty."
+
+msgid "Radius idle time out is empty."
+msgstr "Radius idle time out is empty."
