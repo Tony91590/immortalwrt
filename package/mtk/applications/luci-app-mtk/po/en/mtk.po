@@ -50,13 +50,13 @@ msgid "ENABLE"
 msgstr "ENABLE"
 
 msgid "REMOVE"
-msgstr "REMOVE
+msgstr "REMOVE"
 
 msgid "Station List"
 msgstr "Station List
 
 msgid "Interface"
-msgstr "Interface
+msgstr "Interface"
 
 msgid "MAC-Address"
 msgstr "MAC-Address"
@@ -167,7 +167,7 @@ msgid "Data Beacon Rate (DTIM)"
 msgstr "Data Beacon Rate (DTIM)"
 
 msgid "BG Protection Mode"
-msgstr BG Protection Mode"
+msgstr "BG Protection Mode"
 
 msgid "Short Preamble"
 msgstr "Short Preamble"
@@ -179,7 +179,7 @@ msgid "Short Slot"
 msgstr "Short Slot"
 
 msgid "Channel Auto"
-msgstr Channel Auto"
+msgstr "Channel Auto"
 
 msgid "BSS color"
 msgstr "BSS color"
@@ -329,7 +329,7 @@ msgid "UL OFDMA"
 msgstr "UL OFDMA"
 
 msgid "DL MU-MIMO"
-msgstr "下行MU-MIMO"
+msgstr "DL MU-MIMO"
 
 msgid "UL MU-MIMO"
 msgstr "UL MU-MIMO"
