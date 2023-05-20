@@ -158,16 +158,16 @@ local bands = mtkwifi.detect_triband()
                 </td>
             </tr>
             <tr>
-                <td>弱信号剔除</td>
+                <td>Weak signal rejection</td>
                 <td>
-                    <input name="KickStaRssiLow" value="<%=cfgs.KickStaRssiLow%>" />dbm(范围0到-100，-100最不容易剔除)
+                    <input name="KickStaRssiLow" value="<%=cfgs.KickStaRssiLow%>" />dbm(Range 0 to -100, -100 is the least likely to be culled)
                 </td>
             </tr>
             
             <tr>
-                <td>2.4G强信号剔除</td>
+                <td>2.4G Strong Signal Elimination</td>
                 <td>
-                    <input name="KickStaRssiHigh" value="<%=cfgs.KickStaRssiHigh%>" />dbm(范围0到-100，双频合一时可设置-50将强信号终端引导至5G.仅对ra1接口生效)
+                    <input name="KickStaRssiHigh" value="<%=cfgs.KickStaRssiHigh%>" />dbm(The range is 0 to -100. When dual frequency is integrated, -50 can be set to guide strong signal terminals to 5G. Only valid for ra1 interface)
                 </td>
             </tr>
             <% if mtkwifi.band(string.split(cfgs.WirelessMode,";")[1]) == "5G" then %>
