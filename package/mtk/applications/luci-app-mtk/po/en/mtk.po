@@ -10,7 +10,6 @@ msgstr "dbm (range 0 to -100, -100 is the least easy to remove)"
 msgid "dbm(范围0到-100，双频合一时可设置-50将强信号终端引导至5G.仅对ra1接口生效)"
 msgstr "dbm (range 0 to -100, when dual frequency is integrated, you can set -50 to guide strong signal terminals to 5G. Only valid for ra1 interface)"
 
-
 msgid "Auto"
 msgstr "Auto"
 
