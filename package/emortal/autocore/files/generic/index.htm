@@ -62,7 +62,7 @@
 
 		local eth_info = ""
 		if not has_switch then
-			eth_info = luci.sys.exec("ethinfo")
+			eth_info = luci.sys.exec("/sbin/ethinfo")
 		end
 
 		local rv = {
@@ -649,7 +649,7 @@
 
 			var e;
 
-			if (e = document.getElementById('ethinfo')) {
+			if (e = document.getElementById('ethinfo'))			{
 				var ports = eval('(' + info.ethinfo + ')');
 				var tmp = "";
 				for (var i in ports)
