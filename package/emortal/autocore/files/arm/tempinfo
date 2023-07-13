@@ -1,7 +1,25 @@
 #!/bin/sh
-                cpu_temp="$(awk '{printf("%.1f°C", $0 / 1000)}' /sys/class/thermal/thermal_zone0/temp)"
-                wifi_temp1="$(iwpriv ra0 stat | grep "CurrentTemperature" | head -n1 | awk -F '= ' '{print $2}')°C" #增加这行，获取2.4G WiFi温度。注：获取到的是整数，没有小数点
-                wifi_temp2="$(iwpriv rai0 stat | grep "CurrentTemperature" | head -n1 | awk -F '= ' '{print $2}')°C" #增加这行，获取5G WiFi温度。
 
+IEEE_PATH="/sys/class/ieee80211"
+THERMAL_PATH="/sys/class/thermal"
 
-         echo -n "CPU:${cpu_temp}, 2.4G:${wifi_temp1}, 5G:${wifi_temp2}"
+if grep -Eq "ipq40xx|ipq806x" "/etc/openwrt_release"; then
+	wifi_temp="$(awk '{printf("%.1f°C ", $0 / 1000)}' "$IEEE_PATH"/phy*/device/hwmon/hwmon*/temp1_input | awk '$1=$1')"
+elif grep -Eq "mediatek" "/etc/openwrt_release"; then
+	wifi_temp1="$(iwpriv ra0 stat | awk '/CurrentTemperature/ {printf("%d°C", $3)}')"
+	wifi_temp2="$(iwpriv rax0 stat | awk '/CurrentTemperature/ {printf("%d°C", $3)}')"
+	wifi_temp="$(echo "$wifi_temp1 $wifi_temp2" | xargs)"
+else
+	wifi_temp="$(awk '{printf("%.1f°C ", $0 / 1000)}' "$IEEE_PATH"/phy*/hwmon*/temp1_input | awk '$1=$1')"
+fi
+
+if grep -q "ipq40xx" "/etc/openwrt_release"; then
+	if [ -e "$IEEE_PATH/phy0/hwmon0/temp1_input" ]; then
+		mt76_temp=" $(awk -F ': ' '{print $2}' "$IEEE_PATH/phy0/hwmon0/temp1_input")°C"
+	fi
+
+	echo -n "WiFi:${mt76_temp} ${wifi_temp}"
+else
+	cpu_temp="$(awk '{printf("%.1f°C", $0 / 1000)}' "$THERMAL_PATH/thermal_zone0/temp")"
+	echo -n "CPU: ${cpu_temp}, WiFi: ${wifi_temp}"
+fi
