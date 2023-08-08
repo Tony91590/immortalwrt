@@ -1,23 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2009-2011 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2009-2015 OpenWrt.org
+
 include $(TOPDIR)/rules.mk
 
 ARCH:=arm
 BOARD:=kirkwood
 BOARDNAME:=Marvell Kirkwood
-FEATURES:=targz usb jffs2
-MAINTAINER:=Imre Kaloz <kaloz@openwrt.org>
+FEATURES:=usb nand squashfs ramdisk
+CPU_TYPE:=xscale
+SUBTARGETS:=generic
 
-LINUX_VERSION:=2.6.37.6
+KERNEL_PATCHVER:=5.15
 
 include $(INCLUDE_DIR)/target.mk
 
-KERNELNAME:="uImage"
+KERNELNAME:=zImage dtbs
 
-DEFAULT_PACKAGES +=
+DEFAULT_PACKAGES += uboot-envtools kmod-usb2
 
 $(eval $(call BuildTarget))

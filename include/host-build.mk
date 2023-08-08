@@ -1,41 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2006-2010 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2006-2020 OpenWrt.org
+
+include $(INCLUDE_DIR)/download.mk
 
 HOST_BUILD_DIR ?= $(BUILD_DIR_HOST)/$(PKG_NAME)$(if $(PKG_VERSION),-$(PKG_VERSION))
 HOST_INSTALL_DIR ?= $(HOST_BUILD_DIR)/host-install
 HOST_BUILD_PARALLEL ?=
 
+HOST_MAKE_J:=$(if $(MAKE_JOBSERVER),$(MAKE_JOBSERVER) $(if $(filter 3.% 4.0 4.1,$(MAKE_VERSION)),-j))
+
 ifeq ($(strip $(HOST_BUILD_PARALLEL)),0)
 HOST_JOBS?=-j1
 else
-HOST_JOBS?=$(if $(HOST_BUILD_PARALLEL)$(CONFIG_PKG_DEFAULT_PARALLEL),\
-	$(if $(CONFIG_PKG_BUILD_PARALLEL),-j$(CONFIG_PKG_BUILD_JOBS),-j1),-j1)
+HOST_JOBS?=$(if $(HOST_BUILD_PARALLEL),$(HOST_MAKE_J),-j1)
 endif
 
-include $(INCLUDE_DIR)/host.mk
 include $(INCLUDE_DIR)/unpack.mk
 include $(INCLUDE_DIR)/depends.mk
+include $(INCLUDE_DIR)/quilt.mk
 
 BUILD_TYPES += host
-HOST_STAMP_PREPARED=$(HOST_BUILD_DIR)/.prepared$(if $(HOST_QUILT)$(DUMP),,$(shell $(call find_md5,${CURDIR} $(PKG_FILE_DEPENDS),)))
+HOST_STAMP_PREPARED=$(HOST_BUILD_DIR)/.prepared$(if $(HOST_QUILT)$(DUMP),,$(shell $(call $(if $(CONFIG_AUTOREMOVE),find_md5_reproducible,find_md5),${CURDIR} $(PKG_FILE_DEPENDS),))_$(call confvar,CONFIG_AUTOREMOVE $(HOST_PREPARED_DEPENDS)))
 HOST_STAMP_CONFIGURED:=$(HOST_BUILD_DIR)/.configured
 HOST_STAMP_BUILT:=$(HOST_BUILD_DIR)/.built
-HOST_STAMP_INSTALLED:=$(STAGING_DIR_HOST)/stamp/.$(PKG_NAME)_installed
+HOST_BUILD_PREFIX?=$(if $(IS_PACKAGE_BUILD),$(STAGING_DIR_HOSTPKG),$(STAGING_DIR_HOST))
+HOST_STAMP_INSTALLED:=$(HOST_BUILD_PREFIX)/stamp/.$(PKG_NAME)_installed
+HOST_STAMP_PROGRAMS:=$(foreach program,$(PKG_PROGRAMS),$(subst $(PKG_NAME),$(program),$(HOST_STAMP_INSTALLED)) )
 
 override MAKEFLAGS=
 
-include $(INCLUDE_DIR)/download.mk
-include $(INCLUDE_DIR)/quilt.mk
 include $(INCLUDE_DIR)/autotools.mk
+
+_host_target:=$(if $(HOST_QUILT),,.)
 
 Host/Patch:=$(Host/Patch/Default)
 ifneq ($(strip $(HOST_UNPACK)),)
   define Host/Prepare/Default
 	$(HOST_UNPACK)
+	[ ! -d ./src/ ] || $(CP) ./src/* $(HOST_BUILD_DIR)
 	$(Host/Patch)
   endef
 endif
@@ -47,31 +50,46 @@ endef
 HOST_CONFIGURE_VARS = \
 	CC="$(HOSTCC)" \
 	CFLAGS="$(HOST_CFLAGS)" \
-	CPPFLAGS="$(HOST_CFLAGS)" \
+	CXX="$(HOSTCXX)" \
+	CPPFLAGS="$(HOST_CPPFLAGS)" \
+	CXXFLAGS="$(HOST_CXXFLAGS)" \
 	LDFLAGS="$(HOST_LDFLAGS)" \
-	SHELL="$(BASH)"
+	CONFIG_SHELL="$(SHELL)"
 
 HOST_CONFIGURE_ARGS = \
 	--target=$(GNU_HOST_NAME) \
 	--host=$(GNU_HOST_NAME) \
 	--build=$(GNU_HOST_NAME) \
+	--disable-dependency-tracking \
 	--program-prefix="" \
 	--program-suffix="" \
-	--prefix=$(STAGING_DIR_HOST) \
-	--exec-prefix=$(STAGING_DIR_HOST) \
-	--sysconfdir=$(STAGING_DIR_HOST)/etc \
-	--localstatedir=$(STAGING_DIR_HOST)/var \
-	--sbindir=$(STAGING_DIR_HOST)/bin
+	--prefix=$(HOST_BUILD_PREFIX) \
+	--exec-prefix=$(HOST_BUILD_PREFIX) \
+	--sysconfdir=$(HOST_BUILD_PREFIX)/etc \
+	--localstatedir=$(HOST_BUILD_PREFIX)/var \
+	--sbindir=$(HOST_BUILD_PREFIX)/bin
 
-HOST_CONFIGURE_CMD = ./configure
+HOST_MAKE_VARS = \
+	CFLAGS="$(HOST_CFLAGS)" \
+	CPPFLAGS="$(HOST_CPPFLAGS)" \
+	CXXFLAGS="$(HOST_CXXFLAGS)" \
+	LDFLAGS="$(HOST_LDFLAGS)"
+
+HOST_MAKE_FLAGS =
+
+HOST_CONFIGURE_CMD = $(BASH) ./configure
+
+ifeq ($(HOST_OS),Darwin)
+  HOST_CONFIG_SITE:=$(INCLUDE_DIR)/site/darwin
+endif
 
 define Host/Configure/Default
-	(cd $(HOST_BUILD_DIR)/$(3); \
+	$(if $(HOST_CONFIGURE_PARALLEL),+)(cd $(HOST_BUILD_DIR)/$(3); \
 		if [ -x configure ]; then \
 			$(CP) $(SCRIPT_DIR)/config.{guess,sub} $(HOST_BUILD_DIR)/$(3)/ && \
+			$(HOST_CONFIGURE_VARS) \
 			$(2) \
 			$(HOST_CONFIGURE_CMD) \
-			$(HOST_CONFIGURE_VARS) \
 			$(HOST_CONFIGURE_ARGS) \
 			$(1); \
 		fi \
@@ -83,7 +101,10 @@ define Host/Configure
 endef
 
 define Host/Compile/Default
-	$(MAKE) $(HOST_JOBS) -C $(HOST_BUILD_DIR) $(1)
+	+$(HOST_MAKE_VARS) \
+	$(MAKE) $(HOST_JOBS) -C $(HOST_BUILD_DIR) \
+		$(HOST_MAKE_FLAGS) \
+		$(1)
 endef
 
 define Host/Compile
@@ -91,11 +112,11 @@ define Host/Compile
 endef
 
 define Host/Install/Default
-	$(_SINGLE)$(MAKE) -C $(HOST_BUILD_DIR) install
+	$(call Host/Compile/Default,install)
 endef
 
 define Host/Install
-  $(call Host/Install/Default)
+  $(call Host/Install/Default,$(HOST_BUILD_PREFIX))
 endef
 
 
@@ -106,27 +127,22 @@ ifneq ($(if $(HOST_QUILT),,$(CONFIG_AUTOREBUILD)),)
   endef
 endif
 
-define Download/default
-  FILE:=$(PKG_SOURCE)
-  URL:=$(PKG_SOURCE_URL)
-  PROTO:=$(PKG_SOURCE_PROTO)
-  SUBDIR:=$(PKG_SOURCE_SUBDIR)
-  VERSION:=$(PKG_SOURCE_VERSION)
-  MD5SUM:=$(PKG_MD5SUM)
-endef
-
 define Host/Exports/Default
-  $(1) : export ACLOCAL_INCLUDE=$$(foreach p,$$(wildcard $$(STAGING_DIR_HOST)/share/aclocal $$(STAGING_DIR_HOST)/share/aclocal-*),-I $$(p))
-  $(1) : export STAGING_PREFIX=$$(STAGING_DIR_HOST)
-  $(1) : export PKG_CONFIG_PATH=$$(STAGING_DIR_HOST)/lib/pkgconfig
-  $(1) : export PKG_CONFIG_LIBDIR=$$(STAGING_DIR_HOST)/lib/pkgconfig
+  $(1) : export ACLOCAL_INCLUDE=$$(foreach p,$$(wildcard $$(STAGING_DIR_HOST)/share/aclocal $$(STAGING_DIR_HOST)/share/aclocal-* $(if $(IS_PACKAGE_BUILD),$$(STAGING_DIR)/host/share/aclocal $$(STAGING_DIR_HOSTPKG)/share/aclocal $$(STAGING_DIR)/host/share/aclocal-*)),-I $$(p))
+  $(1) : export STAGING_PREFIX=$$(HOST_BUILD_PREFIX)
+  $(1) : export PKG_CONFIG_PATH=$$(STAGING_DIR_HOST)/lib/pkgconfig:$$(HOST_BUILD_PREFIX)/lib/pkgconfig
+  $(1) : export PKG_CONFIG_LIBDIR=$$(HOST_BUILD_PREFIX)/lib/pkgconfig
+  $(1) : export GIT_CEILING_DIRECTORIES=$$(BUILD_DIR_HOST)
+  $(if $(HOST_CONFIG_SITE),$(1) : export CONFIG_SITE:=$(HOST_CONFIG_SITE))
+  $(if $(IS_PACKAGE_BUILD),$(1) : export PATH=$$(TARGET_PATH_PKG))
 endef
 Host/Exports=$(Host/Exports/Default)
 
+.NOTPARALLEL:
+
 ifndef DUMP
-  define HostBuild
+  define HostBuild/Core
   $(if $(HOST_QUILT),$(Host/Quilt))
-  $(if $(if $(PKG_HOST_ONLY),,$(STAMP_PREPARED)),,$(if $(strip $(PKG_SOURCE_URL)),$(call Download,default)))
   $(if $(DUMP),,$(call HostHost/Autoclean))
 
   $(HOST_STAMP_PREPARED):
@@ -145,53 +161,57 @@ ifndef DUMP
 	touch $$@
 
   $(call Host/Exports,$(HOST_STAMP_BUILT))
-  ifdef Host/Install
-    host-install: $(if $(STAMP_BUILT),$(HOST_STAMP_BUILT),$(HOST_STAMP_INSTALLED))
-  endif
-
-  ifndef STAMP_BUILT
-    prepare: host-prepare
-    compile: host-compile
-    install: host-install
-    clean: host-clean
-    update: host-update
-    refresh: host-refresh
-
-    $(HOST_STAMP_BUILT): $(HOST_STAMP_CONFIGURED)
+  $(HOST_STAMP_BUILT): $(HOST_STAMP_CONFIGURED)
 		$(foreach hook,$(Hooks/HostCompile/Pre),$(call $(hook))$(sep))
 		$(call Host/Compile)
 		$(foreach hook,$(Hooks/HostCompile/Post),$(call $(hook))$(sep))
 		touch $$@
 
-    $(HOST_STAMP_INSTALLED): $(HOST_STAMP_BUILT) $(if $(FORCE_HOST_INSTALL),FORCE)
-		$(call Host/Install)
+  $(call Host/Exports,$(HOST_STAMP_INSTALLED))
+  $(HOST_STAMP_INSTALLED): $(HOST_STAMP_BUILT) $(if $(FORCE_HOST_INSTALL),FORCE)
+		$(call Host/Install,$(HOST_BUILD_PREFIX))
 		$(foreach hook,$(Hooks/HostInstall/Post),$(call $(hook))$(sep))
 		mkdir -p $$(shell dirname $$@)
-		touch $$@
-  else
-    $(HOST_STAMP_BUILT): $(HOST_STAMP_CONFIGURED) $(if $(FORCE_HOST_INSTALL),FORCE)
-		$(foreach hook,$(Hooks/HostCompile/Pre),$(call $(hook))$(sep))
-		$(call Host/Compile)
-		$(foreach hook,$(Hooks/HostCompile/Post),$(call $(hook))$(sep))
-		$(call Host/Install)
-		$(foreach hook,$(Hooks/HostInstall/Post),$(call $(hook))$(sep))
-		touch $$@
+		touch $(HOST_STAMP_BUILT)
+		touch $$@ $(HOST_STAMP_PROGRAMS)
+
+  $(call DefaultTargets,$(patsubst %,host-%,$(DEFAULT_SUBDIR_TARGETS)))
+  ifndef STAMP_BUILT
+    $(foreach t,$(DEFAULT_SUBDIR_TARGETS),
+      $(t): host-$(t)
+      .$(t): .host-$(t)
+    )
+    clean-build: host-clean-build
   endif
-  host-prepare: $(HOST_STAMP_PREPARED)
-  host-configure: $(HOST_STAMP_CONFIGURED)
-  host-compile: $(HOST_STAMP_BUILT)
-  host-install:
-  host-clean: FORCE
-	$(call Host/Clean)
+
+  $(call check_download_integrity)
+
+  $(_host_target)host-prepare: $(HOST_STAMP_PREPARED)
+  $(_host_target)host-configure: $(HOST_STAMP_CONFIGURED)
+  $(_host_target)host-compile: $(HOST_STAMP_BUILT) $(HOST_STAMP_INSTALLED) $(HOST_STAMP_PROGRAMS)
+  host-install: host-compile
+
+  host-clean-build: FORCE
 	$(call Host/Uninstall)
-	rm -rf $(HOST_BUILD_DIR) $(HOST_STAMP_INSTALLED) $(HOST_STAMP_BUILT)
+	rm -rf $(HOST_BUILD_DIR) $(HOST_STAMP_BUILT)
 
+  host-clean: host-clean-build
+	$(call Host/Clean)
+	rm -rf $(HOST_STAMP_INSTALLED) $(HOST_STAMP_PROGRAMS)
+
+    ifneq ($(CONFIG_AUTOREMOVE),)
+      host-compile:
+		$(FIND) $(HOST_BUILD_DIR) -mindepth 1 -maxdepth 1 -not '(' -type f -and -name '.*' -and -size 0 ')' -print0 | \
+			$(XARGS) -0 rm -rf
+    endif
   endef
-
-  download:
-  prepare:
-  compile:
-  install:
-  clean:
-
 endif
+
+define HostBuild
+  $(HostBuild/Core)
+  $(if $(if $(PKG_HOST_ONLY),,$(if $(and $(filter host-%,$(MAKECMDGOALS)),$(PKG_SKIP_DOWNLOAD)),,$(STAMP_PREPARED))),,
+	$(if $(and $(CONFIG_AUTOREMOVE), $(wildcard $(HOST_STAMP_INSTALLED), $(wildcard $(HOST_STAMP_BUILT)))),,
+		$(if $(strip $(PKG_SOURCE_URL)),$(call Download,default))
+	)
+  )
+endef

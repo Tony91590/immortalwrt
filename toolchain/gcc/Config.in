@@ -2,46 +2,23 @@
 
 choice
 	prompt "GCC compiler Version" if TOOLCHAINOPTS
-	default GCC_VERSION_4_4_7 if GCC_DEFAULT_VERSION_4_4_7
-	default GCC_VERSION_4_6_LINARO
+	default GCC_USE_VERSION_12
 	help
 	  Select the version of gcc you wish to use.
 
-	config GCC_VERSION_4_4_7
-		bool "gcc 4.4.7"
-		depends (avr32 || ubicom32)
+	config GCC_USE_VERSION_11
+		bool "gcc 11.x"
 
-	config GCC_VERSION_4_6_2
-		bool "gcc 4.6.2"
+	config GCC_USE_VERSION_12
+		bool "gcc 12.x"
 
-	config GCC_VERSION_4_7_0
-		bool "gcc 4.7.0"
-
-	config GCC_VERSION_4_5_LINARO
-		bool "gcc 4.5.x with Linaro enhancements"
-
-	config GCC_VERSION_4_6_LINARO
-		bool "gcc 4.6.x with Linaro enhancements"
-
-	config GCC_VERSION_4_7_LINARO
-		bool "gcc 4.7.x with Linaro enhancements"
-
-	config GCC_VERSION_LLVM
-		bool "llvm-gcc 4.2"
-		depends BROKEN
-
+	config GCC_USE_VERSION_13
+		bool "gcc 13.x"
 endchoice
 
 config GCC_USE_GRAPHITE
 	bool
 	prompt "Compile in support for the new Graphite framework in GCC 4.4+" if TOOLCHAINOPTS
-	depends !GCC_VERSION_LLVM
-
-config GCC_USE_SYSTEM_PPL_CLOOG
-	bool
-	prompt "Use the system versions of PPL and CLooG"
-	depends GCC_USE_GRAPHITE
-	default n
 
 config EXTRA_GCC_CONFIG_OPTIONS
 	string
@@ -50,48 +27,35 @@ config EXTRA_GCC_CONFIG_OPTIONS
 	help
 	    Any additional gcc options you may want to include....
 
-config SSP_SUPPORT
+config GCC_DEFAULT_PIE
 	bool
-	prompt "Enable Stack-Smashing Protection support" if TOOLCHAINOPTS
-	default n
+	prompt "Build executable with PIE enabled by default" if TOOLCHAINOPTS
 	help
-	    Enable Stack-Smashing Protection support
+	    Use gcc configure option --enable-default-pie to turn on -fPIE and -pie by default.
 
-config TLS_SUPPORT
+config GCC_DEFAULT_SSP
 	bool
-	prompt "Enable Thread-local storage (TLS) support" if TOOLCHAINOPTS
-	default n
+	prompt "Build executable with Stack-Smashing Protection enabled by default" if TOOLCHAINOPTS
 	help
-	    Enable Thread-local storage support
+	    Use gcc configure option --enable-default-ssp to turn on -fstack-protector-strong by default.
 
 config SJLJ_EXCEPTIONS
 	bool
 	prompt "Use setjump()/longjump() exceptions" if TOOLCHAINOPTS
-	default n
 	help
 	    Use old setjump()/longjump() exceptions instead of the newer
 	    frame unwinding exceptions handling routines.  Warning: increases
 	    code size and runtime memory usage.
 
-config INSTALL_LIBSTDCPP
-	bool
-	prompt "Build/install c++ compiler and libstdc++?" if TOOLCHAINOPTS
-	default y
-	help
-	    Build/install c++ compiler and libstdc++?
-
-config INSTALL_LIBGCJ
-	bool
-	depends on !GCC_VERSION_LLVM
-	prompt "Build/install java compiler and GNU classpath ?" if TOOLCHAINOPTS
-	default n
-	help
-	    Build/install java compiler and GNU classpath ?
-
-
 config INSTALL_GFORTRAN
 	bool
 	prompt "Build/install fortran compiler?" if TOOLCHAINOPTS
-	default n
 	help
 	    Build/install GNU fortran compiler ?
+
+config INSTALL_GCCGO
+	bool
+	prompt "Build/install Go compiler?" if TOOLCHAINOPTS
+	depends on USE_GLIBC || BROKEN
+	help
+	    Build/install GNU gccgo compiler ?

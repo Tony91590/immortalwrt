@@ -8,11 +8,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=genext2fs
-PKG_VERSION:=1.4.1
+PKG_VERSION:=1.5.0
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=@SF/genext2fs
-PKG_MD5SUM:=b7b6361bcce2cedff1ae437fadafe53b
+PKG_SOURCE_URL:=https://codeload.github.com/bestouff/$(PKG_NAME)/tar.gz/v$(PKG_VERSION)?
+PKG_HASH:=d3861e4fe89131bd21fbd25cf0b683b727b5c030c4c336fadcd738ada830aab0
 
 include $(INCLUDE_DIR)/host-build.mk
 
@@ -33,9 +33,17 @@ HOST_CONFIGURE_ARGS = \
 	--mandir=/usr/man \
 	--infodir=/usr/info \
 
+define Host/Configure
+	(cd $(HOST_BUILD_DIR); \
+		./autogen.sh \
+	);
+	$(call Host/Configure/Default)
+endef
+
 define Host/Compile
 	$(MAKE) -C $(HOST_BUILD_DIR) \
 		CFLAGS="$(HOST_CFLAGS)" \
+		LDFLAGS="$(HOST_LDFLAGS)" \
 		all
 endef
 

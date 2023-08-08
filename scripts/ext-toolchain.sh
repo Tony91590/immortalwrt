@@ -3,7 +3,7 @@
 #   Script for various external toolchain tasks, refer to
 #   the --help output for more information.
 #
-#   Copyright (C) 2012 Jo-Philipp Wich <jow@openwrt.org>
+#   Copyright (C) 2012 Jo-Philipp Wich <jo@mein.io>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -35,9 +35,11 @@ LIB_SPECS="
 	rt:       librt-* librt
 	pthread:  libpthread-* libpthread
 	stdcpp:   libstdc++
+	thread_db: libthread-db
 	gcc:      libgcc_s
 	ssp:      libssp
 	gfortran: libgfortran
+	gomp:	  libgomp
 "
 
 # Binary specs
@@ -48,6 +50,7 @@ BIN_SPECS="
 	gdbserver: gdbserver
 "
 
+OVERWRITE_CONFIG=""
 
 test_c() {
 	cat <<-EOT | "${CC:-false}" $CFLAGS -o /dev/null -x c - 2>/dev/null
@@ -91,7 +94,7 @@ test_uclibc() {
 	local sysroot="$("$CC" $CFLAGS -print-sysroot 2>/dev/null)"
 	if [ -d "${sysroot:-$TOOLCHAIN}" ]; then
 		local lib
-		for lib in "${sysroot:-$TOOLCHAIN}"/{lib,usr/lib,usr/local/lib}/ld-uClibc*.so*; do
+		for lib in "${sysroot:-$TOOLCHAIN}"/{lib,usr/lib,usr/local/lib}/ld*-uClibc*.so*; do
 			if [ -f "$lib" ] && [ ! -h "$lib" ]; then
 				return 0
 			fi
@@ -279,8 +282,11 @@ print_config() {
 	local mksubtarget
 
 	local target="$("$CC" $CFLAGS -dumpmachine)"
+	local version="$("$CC" $CFLAGS -dumpversion)"
 	local cpuarch="${target%%-*}"
-	local prefix="${CC##*/}"; prefix="${prefix%-*}-"
+
+	# get CC; strip version; strip gcc and add - suffix
+	local prefix="${CC##*/}"; prefix="${prefix%-$version}"; prefix="${prefix%-*}-"
 	local config="${0%/scripts/*}/.config"
 
 	# if no target specified, print choice list and exit
@@ -315,9 +321,13 @@ print_config() {
 	fi
 
 	# bail out if there is a .config already
-	if [ -f "${0%/scripts/*}/.config" ]; then
-		echo "There already is a .config file, refusing to overwrite!" >&2
-		return 1
+	if [ -f "$config" ]; then
+		if [ "$OVERWRITE_CONFIG" == "" ]; then
+			echo "There already is a .config file, refusing to overwrite!" >&2
+			return 1
+		else
+			echo "There already is a .config file, trying to overwrite!"
+		fi
 	fi
 
 	case "$mktarget" in */*)
@@ -325,8 +335,11 @@ print_config() {
 		mktarget="${mktarget%/*}"
 	;; esac
 
+	if [ ! -f "$config" ]; then
+		touch "$config"
+	fi
 
-	echo "CONFIG_TARGET_${mktarget}=y" > "$config"
+	echo "CONFIG_TARGET_${mktarget}=y" >> "$config"
 
 	if [ -n "$mksubtarget" ]; then
 		echo "CONFIG_TARGET_${mktarget}_${mksubtarget}=y" >> "$config"
@@ -356,8 +369,22 @@ print_config() {
 	echo "CONFIG_TOOLCHAIN_PREFIX=\"$prefix\"" >> "$config"
 	echo "CONFIG_TARGET_NAME=\"$target\"" >> "$config"
 
+	if [ -f "$config" ]; then
+		sed -i '/CONFIG_EXTERNAL_TOOLCHAIN_LIBC_USE_MUSL/d' "$config"
+		sed -i '/CONFIG_EXTERNAL_TOOLCHAIN_LIBC_USE_GLIBC/d' "$config"
+	fi
+
+	if [ "$LIBC_TYPE" == glibc ]; then
+		echo "CONFIG_EXTERNAL_TOOLCHAIN_LIBC_USE_GLIBC=y" >> "$config"
+	elif [ "$LIBC_TYPE" == musl ]; then
+		echo "CONFIG_EXTERNAL_TOOLCHAIN_LIBC_USE_MUSL=y" >> "$config"
+	else
+		echo "Can't detect LIBC type. Aborting!" >&2
+		return 1
+	fi
+
 	local lib
-	for lib in C RT PTHREAD GCC STDCPP SSP GFORTRAN; do
+	for lib in C RT PTHREAD GCC STDCPP SSP GFORTRAN GOMP; do
 		local file
 		local spec=""
 		local llib="$(echo "$lib" | sed -e 's#.*#\L&#')"
@@ -446,6 +473,13 @@ probe_cpp() {
 }
 
 probe_libc() {
+	if [ -f $TOOLCHAIN/info.mk ]; then
+		LIBC_TYPE=$(grep LIBC_TYPE $TOOLCHAIN/info.mk | sed 's/LIBC_TYPE=//')
+		return 0
+	fi
+
+	echo "Warning! Can't find info.mk, trying to detect with alternative way."
+
 	if [ -z "$LIBC_TYPE" ]; then
 		if test_uclibc; then
 			LIBC_TYPE="uclibc"
@@ -523,8 +557,13 @@ while [ -n "$1" ]; do
 			exit $?
 		;;
 
+		--overwrite-config)
+			OVERWRITE_CONFIG=y
+		;;
+
 		--config)
 			if probe_cc; then
+				probe_libc
 				print_config "$1"
 				exit $?
 			fi
@@ -563,7 +602,9 @@ while [ -n "$1" ]; do
 			echo -e "  Most commands also take a --cflags parameter which " >&2
 			echo -e "  is used to specify C flags to be passed to the "     >&2
 			echo -e "  cross compiler when performing tests."               >&2
-			echo -e "  This paremter may be repeated multiple times."       >&2
+			echo -e "  This parameter may be repeated multiple times."      >&2
+			echo -e "  Use --overwrite-config before --config to overwrite" >&2
+			echo -e "  an already present config with the required changes.">&2
 			exit 1
 		;;
 

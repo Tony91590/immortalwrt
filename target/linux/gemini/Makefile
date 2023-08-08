@@ -1,20 +1,30 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2009-2011 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2009-2018 OpenWrt.org
+
 include $(TOPDIR)/rules.mk
 
 ARCH:=arm
 BOARD:=gemini
 BOARDNAME:=Cortina Systems CS351x
-FEATURES:=squashfs
-CFLAGS:=-Os -pipe -march=armv4 -mtune=fa526 -fno-caller-saves
-MAINTAINER:=Imre Kaloz <kaloz@openwrt.org>
+FEATURES:=squashfs pci rtc usb dt gpio display ext4 rootfs-part boot-part
+CPU_TYPE:=fa526
+SUBTARGETS:=generic
 
-LINUX_VERSION:=2.6.37.6
+KERNEL_PATCHVER:=5.15
+
+define Target/Description
+	Build firmware images for the StorLink/Cortina Gemini CS351x ARM FA526 CPU
+endef
+
+KERNELNAME:=zImage dtbs
 
 include $(INCLUDE_DIR)/target.mk
+
+DEFAULT_PACKAGES += \
+	kmod-usb-fotg210 \
+	kmod-usb-ledtrig-usbport \
+	kmod-leds-gpio \
+	kmod-gpio-button-hotplug
 
 $(eval $(call BuildTarget))

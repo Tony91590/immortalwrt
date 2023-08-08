@@ -1,31 +1,33 @@
-# Makefile for OpenWrt
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright (C) 2007 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
 
 TOPDIR:=${CURDIR}
 LC_ALL:=C
 LANG:=C
-export TOPDIR LC_ALL LANG
+TZ:=UTC
+export TOPDIR LC_ALL LANG TZ
+
+empty:=
+space:= $(empty) $(empty)
+$(if $(findstring $(space),$(TOPDIR)),$(error ERROR: The path to the OpenWrt directory must not include any spaces))
 
 world:
 
-include $(TOPDIR)/include/host.mk
+DISTRO_PKG_CONFIG:=$(shell $(TOPDIR)/scripts/command_all.sh pkg-config | grep '/usr' -m 1)
+
+export ORIG_PATH:=$(if $(ORIG_PATH),$(ORIG_PATH),$(PATH))
+export PATH:=$(if $(STAGING_DIR),$(abspath $(STAGING_DIR)/../host/bin),$(TOPDIR)/staging_dir/host/bin):$(PATH)
 
 ifneq ($(OPENWRT_BUILD),1)
-  # XXX: these three lines are normally defined by rules.mk
-  # but we can't include that file in this context
-  empty:=
-  space:= $(empty) $(empty)
   _SINGLE=export MAKEFLAGS=$(space);
 
   override OPENWRT_BUILD=1
   export OPENWRT_BUILD
   GREP_OPTIONS=
   export GREP_OPTIONS
+  CDPATH=
+  export CDPATH
   include $(TOPDIR)/include/debug.mk
   include $(TOPDIR)/include/depends.mk
   include $(TOPDIR)/include/toplevel.mk
@@ -38,26 +40,39 @@ else
   include tools/Makefile
   include toolchain/Makefile
 
-$(toolchain/stamp-install): $(tools/stamp-install)
-$(target/stamp-compile): $(toolchain/stamp-install) $(tools/stamp-install) $(BUILD_DIR)/.prepared
-$(package/stamp-cleanup): $(target/stamp-compile)
+$(toolchain/stamp-compile): $(tools/stamp-compile) $(if $(CONFIG_BUILDBOT),toolchain_rebuild_check)
+$(target/stamp-compile): $(toolchain/stamp-compile) $(tools/stamp-compile) $(BUILD_DIR)/.prepared
 $(package/stamp-compile): $(target/stamp-compile) $(package/stamp-cleanup)
 $(package/stamp-install): $(package/stamp-compile)
-$(package/stamp-rootfs-prepare): $(package/stamp-install)
-$(target/stamp-install): $(package/stamp-compile) $(package/stamp-install) $(package/stamp-rootfs-prepare)
+$(target/stamp-install): $(package/stamp-compile) $(package/stamp-install)
+check: $(tools/stamp-check) $(toolchain/stamp-check) $(package/stamp-check)
 
 printdb:
 	@true
 
 prepare: $(target/stamp-compile)
 
-clean: FORCE
-	$(_SINGLE)$(SUBMAKE) target/linux/clean
-	rm -rf $(BUILD_DIR) $(BIN_DIR) $(BUILD_LOG_DIR)
+_clean: FORCE
+	rm -rf $(BUILD_DIR) $(STAGING_DIR) $(BIN_DIR) $(OUTPUT_DIR)/packages/$(ARCH_PACKAGES) $(TOPDIR)/staging_dir/packages
 
-dirclean: clean
-	rm -rf $(STAGING_DIR) $(STAGING_DIR_HOST) $(STAGING_DIR_TOOLCHAIN) $(TOOLCHAIN_DIR) $(BUILD_DIR_HOST) $(BUILD_DIR_TOOLCHAIN)
+clean: _clean
+	rm -rf $(BUILD_LOG_DIR)
+
+targetclean: _clean
+	rm -rf $(TOOLCHAIN_DIR) $(BUILD_DIR_BASE)/hostpkg $(BUILD_DIR_TOOLCHAIN)
+
+dirclean: targetclean clean
+	rm -rf $(STAGING_DIR_HOST) $(STAGING_DIR_HOSTPKG) $(BUILD_DIR_BASE)/host
 	rm -rf $(TMP_DIR)
+	$(MAKE) -C $(TOPDIR)/scripts/config clean
+
+toolchain_rebuild_check:
+	$(SCRIPT_DIR)/check-toolchain-clean.sh
+
+cacheclean:
+ifneq ($(CONFIG_CCACHE),)
+	$(STAGING_DIR_HOST)/bin/ccache -C
+endif
 
 ifndef DUMP_TARGET_DB
 $(BUILD_DIR)/.prepared: Makefile
@@ -78,30 +93,47 @@ endif
 
 # check prerequisites before starting to build
 prereq: $(target/stamp-prereq) tmp/.prereq_packages
-	@if [ ! -f "$(INCLUDE_DIR)/site/$(REAL_GNU_TARGET_NAME)" ]; then \
-		echo 'ERROR: Missing site config for target "$(REAL_GNU_TARGET_NAME)" !'; \
+	@if [ ! -f "$(INCLUDE_DIR)/site/$(ARCH)" ]; then \
+		echo 'ERROR: Missing site config for architecture "$(ARCH)" !'; \
 		echo '       The missing file will cause configure scripts to fail during compilation.'; \
-		echo '       Please provide a "$(INCLUDE_DIR)/site/$(REAL_GNU_TARGET_NAME)" file and restart the build.'; \
+		echo '       Please provide a "$(INCLUDE_DIR)/site/$(ARCH)" file and restart the build.'; \
 		exit 1; \
 	fi
 
-prepare: .config $(tools/stamp-install) $(toolchain/stamp-install)
-world: prepare $(target/stamp-compile) $(package/stamp-cleanup) $(package/stamp-compile) $(package/stamp-install) $(package/stamp-rootfs-prepare) $(target/stamp-install) FORCE
+$(BIN_DIR)/profiles.json: FORCE
+	$(if $(CONFIG_JSON_OVERVIEW_IMAGE_INFO), \
+		WORK_DIR=$(BUILD_DIR)/json_info_files \
+			$(SCRIPT_DIR)/json_overview_image_info.py $@ \
+	)
+
+json_overview_image_info: $(BIN_DIR)/profiles.json
+
+checksum: FORCE
+	$(call sha256sums,$(BIN_DIR),$(CONFIG_BUILDBOT))
+
+buildversion: FORCE
+	$(SCRIPT_DIR)/getver.sh > $(BIN_DIR)/version.buildinfo
+
+feedsversion: FORCE
+	$(SCRIPT_DIR)/feeds list -fs > $(BIN_DIR)/feeds.buildinfo
+
+diffconfig: FORCE
+	mkdir -p $(BIN_DIR)
+	$(SCRIPT_DIR)/diffconfig.sh > $(BIN_DIR)/config.buildinfo
+
+buildinfo: FORCE
+	$(_SINGLE)$(SUBMAKE) -r diffconfig buildversion feedsversion
+
+prepare: .config $(tools/stamp-compile) $(toolchain/stamp-compile)
+	$(_SINGLE)$(SUBMAKE) -r buildinfo
+
+world: prepare $(target/stamp-compile) $(package/stamp-compile) $(package/stamp-install) $(target/stamp-install) FORCE
 	$(_SINGLE)$(SUBMAKE) -r package/index
-
-# update all feeds, re-create index files, install symlinks
-package/symlinks:
-	$(SCRIPT_DIR)/feeds update -a
-	$(SCRIPT_DIR)/feeds install -a
-
-# re-create index files, install symlinks
-package/symlinks-install:
-	$(SCRIPT_DIR)/feeds update -i
-	$(SCRIPT_DIR)/feeds install -a
-
-# remove all symlinks, don't touch ./feeds
-package/symlinks-clean:
-	$(SCRIPT_DIR)/feeds uninstall -a
+	$(_SINGLE)$(SUBMAKE) -r json_overview_image_info
+	$(_SINGLE)$(SUBMAKE) -r checksum
+ifneq ($(CONFIG_CCACHE),)
+	$(STAGING_DIR_HOST)/bin/ccache -s
+endif
 
 .PHONY: clean dirclean prereq prepare world package/symlinks package/symlinks-install package/symlinks-clean
 

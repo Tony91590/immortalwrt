@@ -1,26 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright (C) 2010 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+
 include $(TOPDIR)/rules.mk
 
 ARCH:=powerpc
 BOARD:=mpc85xx
 BOARDNAME:=Freescale MPC85xx
-CFLAGS:=-Os -pipe -fno-caller-saves -mcpu=8540
-FEATURES:=spe_fpu ramdisk
-MAINTAINER:=Imre Kaloz <kaloz@openwrt.org>
+CPU_TYPE:=8548
+FEATURES:=squashfs ramdisk nand
+SUBTARGETS:=p1010 p1020 p2020
 
-LINUX_VERSION:=2.6.38.8
+KERNEL_PATCHVER:=5.15
+
+KERNELNAME:=zImage
 
 include $(INCLUDE_DIR)/target.mk
 
-DEFAULT_PACKAGES += kmod-booke-wdt
-
-define Target/Description
-	Build images for the Freescale MPC85xx based boards.
-endef
+DEFAULT_PACKAGES += \
+	kmod-input-core kmod-input-gpio-keys kmod-button-hotplug \
+	kmod-leds-gpio swconfig kmod-ath9k wpad-basic-openssl kmod-usb2 \
+	uboot-envtools
 
 $(eval $(call BuildTarget))

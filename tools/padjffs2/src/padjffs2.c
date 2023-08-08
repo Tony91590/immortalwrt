@@ -15,11 +15,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 static char *progname;
+static unsigned int xtra_offset;
 static unsigned char eof_mark[4] = {0xde, 0xad, 0xc0, 0xde};
+static unsigned char jffs2_pad_be[] = "\x19\x85\x20\x04\x04\x00\x00\x00\xc4\x94\xdb\xf4";
+static unsigned char jffs2_pad_le[] = "\x85\x19\x04\x20\x00\x00\x00\x04\xa8\xfb\xa0\xb4";
+static unsigned char *pad = eof_mark;
+static int pad_len = sizeof(eof_mark);
+static bool pad_to_stdout = false;
 
 #define ERR(fmt, ...) do { \
 	fflush(0); \
@@ -41,6 +48,7 @@ static int pad_image(char *name, uint32_t pad_mask)
 {
 	char *buf;
 	int fd;
+	int outfd;
 	ssize_t in_len;
 	ssize_t out_len;
 	int ret = -1;
@@ -61,7 +69,14 @@ static int pad_image(char *name, uint32_t pad_mask)
 	if (in_len < 0)
 		goto close;
 
+	if (!pad_to_stdout)
+		outfd = fd;
+	else
+		outfd = STDOUT_FILENO;
+
 	memset(buf, '\xff', BUF_SIZE);
+
+	in_len += xtra_offset;
 
 	out_len = in_len;
 	while (pad_mask) {
@@ -83,7 +98,7 @@ static int pad_image(char *name, uint32_t pad_mask)
 				pad_mask &= ~mask;
 		}
 
-		printf("padding image to %08x\n", (unsigned int) in_len);
+		fprintf(stderr, "padding image to %08x\n", (unsigned int) in_len - xtra_offset);
 
 		while (out_len < in_len) {
 			ssize_t len;
@@ -92,7 +107,7 @@ static int pad_image(char *name, uint32_t pad_mask)
 			if (len > BUF_SIZE)
 				len = BUF_SIZE;
 
-			t = write(fd, buf, len);
+			t = write(outfd, buf, len);
 			if (t != len) {
 				ERRS("Unable to write to %s", name);
 				goto close;
@@ -102,12 +117,12 @@ static int pad_image(char *name, uint32_t pad_mask)
 		}
 
 		/* write out the JFFS end-of-filesystem marker */
-		t = write(fd, eof_mark, 4);
-		if (t != 4) {
+		t = write(outfd, pad, pad_len);
+		if (t != pad_len) {
 			ERRS("Unable to write to %s", name);
 			goto close;
 		}
-		out_len += 4;
+		out_len += pad_len;
 	}
 
 	ret = 0;
@@ -120,31 +135,71 @@ out:
 	return ret;
 }
 
+static int usage(void)
+{
+	fprintf(stderr,
+		"Usage: %s file [<options>] [pad0] [pad1] [padN]\n"
+		"Options:\n"
+		"  -x <offset>:          Add an extra offset for padding data\n"
+		"  -J:                   Use a fake big-endian jffs2 padding element instead of EOF\n"
+		"                        This is used to work around broken boot loaders that\n"
+		"                        try to parse the entire firmware area as one big jffs2\n"
+		"  -j:                   (like -J, but little-endian instead of big-endian)\n"
+		"  -c:                   write padding to stdout\n"
+		"\n",
+		progname);
+	return EXIT_FAILURE;
+}
+
 int main(int argc, char* argv[])
 {
+	char *image;
 	uint32_t pad_mask;
 	int ret = EXIT_FAILURE;
 	int err;
-	int i;
+	int ch, i;
 
 	progname = basename(argv[0]);
 
-	if (argc < 2) {
-		fprintf(stderr,
-			"Usage: %s file [pad0] [pad1] [padN]\n",
-			progname);
-		goto out;
-	}
+	if (argc < 2)
+		return usage();
+
+	image = argv[1];
+	argv++;
+	argc--;
 
 	pad_mask = 0;
-	for (i = 2; i < argc; i++)
+	while ((ch = getopt(argc, argv, "x:Jjc")) != -1) {
+		switch (ch) {
+		case 'x':
+			xtra_offset = strtoul(optarg, NULL, 0);
+			fprintf(stderr, "assuming %u bytes offset\n",
+				xtra_offset);
+			break;
+		case 'J':
+			pad = jffs2_pad_be;
+			pad_len = sizeof(jffs2_pad_be) - 1;
+			break;
+		case 'j':
+			pad = jffs2_pad_le;
+			pad_len = sizeof(jffs2_pad_le) - 1;
+			break;
+		case 'c':
+			pad_to_stdout = true;
+			break;
+		default:
+			return usage();
+		}
+	}
+
+	for (i = optind; i < argc; i++)
 		pad_mask |= strtoul(argv[i], NULL, 0) * 1024;
 
 	if (pad_mask == 0)
 		pad_mask = (4 * 1024) | (8 * 1024) | (64 * 1024) |
 			   (128 * 1024);
 
-	err = pad_image(argv[1], pad_mask);
+	err = pad_image(image, pad_mask);
 	if (err)
 		goto out;
 

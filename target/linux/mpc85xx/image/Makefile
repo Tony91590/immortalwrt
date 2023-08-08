@@ -1,29 +1,23 @@
-#
-# Copyright (C) 2010 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# SPDX-License-Identifier: GPL-2.0-only
+
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
 
-DTS_TARGETS = mpc8548cds
+DEVICE_VARS += DTB_SIZE
 
-define Image/Prepare
-	cp $(LINUX_DIR)/arch/powerpc/boot/zImage $(KDIR)/zImage
+define Build/pad-dtb
+	$(call Image/BuildDTB,$(DTS_DIR)/$(DEVICE_DTS).dts,$(dir $@)/image-$(DEVICE_DTS).dtb,,--space $(DTB_SIZE))
 endef
 
-define Image/BuildKernel
-	cp $(KDIR)/zImage $(BIN_DIR)/$(IMG_PREFIX)-zImage
-	$(foreach dts,$(DTS_TARGETS),$(LINUX_DIR)/scripts/dtc/dtc -I dts -O dtb $(LINUX_DIR)/arch/powerpc/boot/dts/$(dts).dts > $(BIN_DIR)/$(IMG_PREFIX)-$(dts).fdt)
+define Device/Default
+  PROFILES := Default
+  DEVICE_DTS := $(lastword $(subst _, ,$(1)))
+  KERNEL_DEPENDS = $$(wildcard $(DTS_DIR)/$$(DEVICE_DTS).dts)
+  KERNEL_ENTRY := 0x00000000
+  KERNEL_LOADADDR := 0x00000000
+  KERNEL := kernel-bin
 endef
 
-define Image/Build/ext2
-	cp $(KDIR)/root.$(1) $(BIN_DIR)/$(IMG_PREFIX)-ext2.img
-endef
-
-define Image/Build
-	$(call Image/Build/$(1),$(1))
-endef
+include $(SUBTARGET).mk
 
 $(eval $(call BuildImage))

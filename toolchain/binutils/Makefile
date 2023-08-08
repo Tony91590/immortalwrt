@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2006-2012 OpenWrt.org
+# Copyright (C) 2006-2013 OpenWrt.org
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -11,76 +11,90 @@ PKG_VERSION:=$(call qstrip,$(CONFIG_BINUTILS_VERSION))
 BIN_VERSION:=$(PKG_VERSION)
 
 PKG_SOURCE_URL:=@GNU/binutils/
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
 
-ifeq ($(PKG_VERSION),2.19.1)
-  PKG_MD5SUM:=09a8c5821a2dfdbb20665bc0bd680791
+TAR_OPTIONS += --exclude='*.rej'
+
+ifeq ($(PKG_VERSION),2.37)
+  PKG_HASH:=820d9724f020a3e69cb337893a0b63c2db161dadcb0e06fc11dc29eb1e84a32c
 endif
-ifeq ($(PKG_VERSION),2.20.1)
-  PKG_MD5SUM:=9cdfb9d6ec0578c166d3beae5e15c4e5
+
+ifeq ($(PKG_VERSION),2.38)
+  PKG_HASH:=e316477a914f567eccc34d5d29785b8b0f5a10208d36bbacedcc39048ecfe024
 endif
-ifeq ($(PKG_VERSION),2.21)
-  PKG_MD5SUM:=c84c5acc9d266f1a7044b51c85a823f5
+
+ifeq ($(PKG_VERSION),2.39)
+  PKG_HASH:=645c25f563b8adc0a81dbd6a41cffbf4d37083a382e02d5d3df4f65c09516d00
 endif
-ifeq ($(PKG_VERSION),2.21.1)
-  PKG_MD5SUM:=bde820eac53fa3a8d8696667418557ad
+
+ifeq ($(PKG_VERSION),2.40)
+  PKG_HASH:=0f8a4c272d7f17f369ded10a4aca28b8e304828e95526da482b0ccc4dfc9d8e1
 endif
-ifeq ($(PKG_VERSION),2.22)
-  PKG_MD5SUM:=ee0f10756c84979622b992a4a61ea3f5
-endif
+
+HOST_BUILD_PARALLEL:=1
 
 PATCH_DIR:=./patches/$(PKG_VERSION)
 
-REAL_STAGING_DIR_HOST:=$(STAGING_DIR_HOST)
-
 include $(INCLUDE_DIR)/toolchain-build.mk
 
-BINUTILS_CONFIGURE:= \
-	./configure \
-		--prefix=$(TOOLCHAIN_DIR) \
-		--build=$(GNU_HOST_NAME) \
-		--host=$(GNU_HOST_NAME) \
-		--target=$(REAL_GNU_TARGET_NAME) \
-		--with-sysroot=$(TOOLCHAIN_DIR) \
-		--disable-multilib \
-		--disable-werror \
-		--disable-nls \
-		$(GRAPHITE_CONFIGURE) \
-		$(SOFT_FLOAT_CONFIG_OPTION) \
-		$(call qstrip,$(CONFIG_EXTRA_BINUTILS_CONFIG_OPTIONS)) 
+ifdef CONFIG_GCC_USE_GRAPHITE
+  GRAPHITE_CONFIGURE:= --with-isl=$(STAGING_DIR_HOST)
+else
+  GRAPHITE_CONFIGURE:= --without-isl --without-cloog
+endif
+
+HOST_CONFIGURE_ARGS = \
+	--prefix=$(TOOLCHAIN_DIR) \
+	--build=$(GNU_HOST_NAME) \
+	--host=$(GNU_HOST_NAME) \
+	--target=$(REAL_GNU_TARGET_NAME) \
+	--with-sysroot=$(TOOLCHAIN_DIR) \
+	--with-system-zlib \
+	--with-zstd \
+	--enable-deterministic-archives \
+	--enable-plugins \
+	--enable-lto \
+	--disable-gprofng \
+	--disable-multilib \
+	--disable-werror \
+	--disable-nls \
+	--disable-sim \
+	--disable-gdb \
+	$(GRAPHITE_CONFIGURE) \
+	$(SOFT_FLOAT_CONFIG_OPTION) \
+	$(call qstrip,$(CONFIG_EXTRA_BINUTILS_CONFIG_OPTIONS))
 
 ifneq ($(CONFIG_SSP_SUPPORT),)
-  BINUTILS_CONFIGURE+= \
+  HOST_CONFIGURE_ARGS+= \
 		--enable-libssp
 else
-  BINUTILS_CONFIGURE+= \
+  HOST_CONFIGURE_ARGS+= \
 		--disable-libssp
 endif
 
 ifneq ($(CONFIG_EXTRA_TARGET_ARCH),)
-  BINUTILS_CONFIGURE+= \
+  HOST_CONFIGURE_ARGS+= \
 		--enable-targets=$(call qstrip,$(CONFIG_EXTRA_TARGET_ARCH_NAME))-linux-$(TARGET_SUFFIX)
 endif
 
+HOST_CONFIGURE_VARS += \
+	acx_cv_cc_gcc_supports_ada=false
+
 define Host/Prepare
 	$(call Host/Prepare/Default)
-	ln -snf $(PKG_NAME)-$(PKG_VERSION) $(BUILD_DIR_TOOLCHAIN)/$(PKG_NAME)
+	ln -snf $(notdir $(HOST_BUILD_DIR)) $(BUILD_DIR_TOOLCHAIN)/$(PKG_NAME)
 	$(CP) $(SCRIPT_DIR)/config.{guess,sub} $(HOST_BUILD_DIR)/
 endef
 
-define Host/Configure
-	(cd $(HOST_BUILD_DIR); \
-		$(BINUTILS_CONFIGURE) \
-	);
-endef
-
 define Host/Compile
-	$(MAKE) $(TOOLCHAIN_JOBS) -C $(HOST_BUILD_DIR) all
+	+$(MAKE) $(HOST_JOBS) -C $(HOST_BUILD_DIR) all
 endef
 
 define Host/Install
-	$(MAKE) -C $(HOST_BUILD_DIR) install
-	$(CP) $(TOOLCHAIN_DIR)/bin/$(REAL_GNU_TARGET_NAME)-readelf $(REAL_STAGING_DIR_HOST)/bin/readelf
+	$(MAKE) -C $(HOST_BUILD_DIR) \
+		install
+	$(call FixupLibdir,$(TOOLCHAIN_DIR))
+	$(CP) $(TOOLCHAIN_DIR)/bin/$(REAL_GNU_TARGET_NAME)-readelf $(HOST_BUILD_PREFIX)/bin/readelf
 endef
 
 define Host/Clean

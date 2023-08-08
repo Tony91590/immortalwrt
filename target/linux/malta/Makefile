@@ -1,22 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright (C) 2010-2011 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+
 include $(TOPDIR)/rules.mk
 
 BOARD:=malta
 BOARDNAME:=MIPS Malta CoreLV board (qemu)
-CFLAGS:=-Os -pipe -mips32r2 -mtune=mips32r2 -fno-caller-saves
-SUBTARGETS:=le be
+SUBTARGETS:=le be le64 be64
 INITRAMFS_EXTRA_FILES:=
-MAINTAINER:=Florian Fainelli <florian@openwrt.org>
+FEATURES:=cpiogz ext4 ramdisk squashfs targz
 
-LINUX_VERSION:=3.3.5
+KERNEL_PATCHVER:=5.15
 
 include $(INCLUDE_DIR)/target.mk
 
-DEFAULT_PACKAGES += wpad-mini kmod-mac80211-hwsim kmod-pcnet32
+DEFAULT_PACKAGES += wpad-basic-openssl kmod-mac80211-hwsim kmod-pcnet32 mkf2fs e2fsprogs
 
 $(eval $(call BuildTarget))

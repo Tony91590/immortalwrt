@@ -16,6 +16,7 @@
 #include <linux/netdevice.h>
 #include <linux/switch.h>
 #include <linux/phy.h>
+#include <linux/version.h>
 
 #define PSB6970_MAX_VLANS		16
 #define PSB6970_NUM_PORTS		7
@@ -59,23 +60,29 @@ struct psb6970_priv {
 	struct mutex reg_mutex;
 
 	/* all fields below are cleared on reset */
-	bool vlan;
-	u16 vlan_id[PSB6970_MAX_VLANS];
-	u8 vlan_table[PSB6970_MAX_VLANS];
-	u8 vlan_tagged;
-	u16 pvid[PSB6970_NUM_PORTS];
+	struct_group(psb6970_priv_volatile,
+		bool vlan;
+		u16 vlan_id[PSB6970_MAX_VLANS];
+		u8 vlan_table[PSB6970_MAX_VLANS];
+		u8 vlan_tagged;
+		u16 pvid[PSB6970_NUM_PORTS];
+	);
 };
 
 #define to_psb6970(_dev) container_of(_dev, struct psb6970_priv, dev)
 
 static u16 psb6970_mii_read(struct phy_device *phydev, int reg)
 {
-	return phydev->bus->read(phydev->bus, PHYADDR(reg));
+	struct mii_bus *bus = phydev->mdio.bus;
+
+	return bus->read(bus, PHYADDR(reg));
 }
 
 static void psb6970_mii_write(struct phy_device *phydev, int reg, u16 val)
 {
-	phydev->bus->write(phydev->bus, PHYADDR(reg), val);
+	struct mii_bus *bus = phydev->mdio.bus;
+
+	bus->write(bus, PHYADDR(reg), val);
 }
 
 static int
@@ -267,8 +274,8 @@ static int psb6970_reset_switch(struct switch_dev *dev)
 
 	mutex_lock(&priv->reg_mutex);
 
-	memset(&priv->vlan, 0, sizeof(struct psb6970_priv) -
-	       offsetof(struct psb6970_priv, vlan));
+	memset(&priv->psb6970_priv_volatile, 0,
+		sizeof(priv->psb6970_priv_volatile));
 
 	for (i = 0; i < PSB6970_MAX_VLANS; i++)
 		priv->vlan_id[i] = i;
@@ -302,7 +309,6 @@ static const struct switch_dev_ops psb6970_ops = {
 static int psb6970_config_init(struct phy_device *pdev)
 {
 	struct psb6970_priv *priv;
-	struct net_device *dev = pdev->attached_dev;
 	struct switch_dev *swdev;
 	int ret;
 
@@ -312,16 +318,18 @@ static int psb6970_config_init(struct phy_device *pdev)
 
 	priv->phy = pdev;
 
-	if (pdev->addr == 0)
+	if (pdev->mdio.addr == 0)
 		printk(KERN_INFO "%s: psb6970 switch driver attached.\n",
 		       pdev->attached_dev->name);
 
-	if (pdev->addr != 0) {
+	if (pdev->mdio.addr != 0) {
 		kfree(priv);
 		return 0;
 	}
 
-	pdev->supported = pdev->advertising = SUPPORTED_100baseT_Full;
+	linkmode_zero(pdev->supported);
+	linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, pdev->supported);
+	linkmode_copy(pdev->advertising, pdev->supported);
 
 	mutex_init(&priv->reg_mutex);
 	priv->read = psb6970_mii_read;
@@ -347,8 +355,6 @@ static int psb6970_config_init(struct phy_device *pdev)
 		kfree(priv);
 		goto done;
 	}
-
-	dev->phy_ptr = priv;
 
 done:
 	return ret;
@@ -384,14 +390,14 @@ static void psb6970_remove(struct phy_device *pdev)
 	if (!priv)
 		return;
 
-	if (pdev->addr == 0)
+	if (pdev->mdio.addr == 0)
 		unregister_switch(&priv->dev);
 	kfree(priv);
 }
 
 static int psb6970_fixup(struct phy_device *dev)
 {
-	struct mii_bus *bus = dev->bus;
+	struct mii_bus *bus = dev->mdio.bus;
 	u16 reg;
 
 	/* look for the switch on the bus */
@@ -415,13 +421,12 @@ static struct phy_driver psb6970_driver = {
 	.config_init = &psb6970_config_init,
 	.config_aneg = &psb6970_config_aneg,
 	.read_status = &psb6970_read_status,
-	.driver = {.owner = THIS_MODULE},
 };
 
 int __init psb6970_init(void)
 {
 	phy_register_fixup_for_id(PHY_ANY_ID, psb6970_fixup);
-	return phy_driver_register(&psb6970_driver);
+	return phy_driver_register(&psb6970_driver, THIS_MODULE);
 }
 
 module_init(psb6970_init);
