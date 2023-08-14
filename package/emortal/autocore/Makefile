@@ -32,9 +32,9 @@ define Package/autocore-arm/description
   A luci autoconfig hotplug script.
 endef
 
-define Package/autocore-x86/description
-  A usb autoconfig hotplug script.
-endef
+#define Package/autocore-x86/description
+#  A usb autoconfig hotplug script.
+#endef
 
 define Build/Compile
 endef
@@ -49,14 +49,14 @@ define Package/autocore-arm/install
 	$(INSTALL_BIN) ./files/arm/sbin/ethinfo $(1)/sbin/ethinfo
 endef
 
-define Package/autocore-x86/install
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/x86/autocore $(1)/etc/init.d/autocore
-	$(INSTALL_DIR) $(1)/etc
-	$(INSTALL_DATA) ./files/x86/index.htm $(1)/etc/index.htm
-	$(INSTALL_DIR) $(1)/sbin
-	$(CP) ./files/x86/sbin/* $(1)/sbin
-endef
+#define Package/autocore-x86/install
+#	$(INSTALL_DIR) $(1)/etc/init.d
+#	$(INSTALL_BIN) ./files/x86/autocore $(1)/etc/init.d/autocore
+#	$(INSTALL_DIR) $(1)/etc
+#	$(INSTALL_DATA) ./files/x86/index.htm $(1)/etc/index.htm
+#	$(INSTALL_DIR) $(1)/sbin
+#	$(CP) ./files/x86/sbin/* $(1)/sbin
+#endef
 
 $(eval $(call BuildPackage,autocore-arm))
 #$(eval $(call BuildPackage,autocore-x86))
