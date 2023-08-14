@@ -1,7 +1,0 @@
-#!/bin/sh
-                cpu_temp="$(awk '{printf("%.1f°C", $0 / 1000)}' /sys/class/thermal/thermal_zone0/temp)"
-                wifi_temp1="$(iwpriv ra0 stat | grep "CurrentTemperature" | head -n1 | awk -F '= ' '{print $2}')°C" #增加这行，获取2.4G WiFi温度。注：获取到的是整数，没有小数点
-                wifi_temp2="$(iwpriv rai0 stat | grep "CurrentTemperature" | head -n1 | awk -F '= ' '{print $2}')°C" #增加这行，获取5G WiFi温度。
-
-
-         echo -n "CPU:${cpu_temp}, 2.4G:${wifi_temp1}, 5G:${wifi_temp2}"
