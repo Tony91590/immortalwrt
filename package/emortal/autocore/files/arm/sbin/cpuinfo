@@ -1,5 +1,6 @@
 #!/bin/sh
 
+
 cpu_arch="$(grep "model name" "/proc/cpuinfo" | head -n1 | awk -F ': ' '{print $2}' | xargs)"
 [ -z "${cpu_arch}" ] && cpu_arch="?"
 if grep -q "x86" "/etc/openwrt_release"; then
