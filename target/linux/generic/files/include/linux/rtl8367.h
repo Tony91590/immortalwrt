@@ -12,6 +12,7 @@
 #define _RTL8367_H
 
 #define RTL8367_DRIVER_NAME	"rtl8367"
+#define RTL8367B_DRIVER_NAME	"rtl8367b"
 
 enum rtl8367_port_speed {
 	RTL8367_PORT_SPEED_10 = 0,
@@ -38,6 +39,9 @@ enum rtl8367_extif_mode {
 	RTL8367_EXTIF_MODE_TMII_PHY,
 	RTL8367_EXTIF_MODE_GMII,
 	RTL8367_EXTIF_MODE_RGMII_33V,
+	RTL8367B_EXTIF_MODE_RMII_MAC = 7,
+	RTL8367B_EXTIF_MODE_RMII_PHY,
+	RTL8367B_EXTIF_MODE_RGMII_33V,
 };
 
 struct rtl8367_extif_config {
@@ -50,6 +54,7 @@ struct rtl8367_extif_config {
 struct rtl8367_platform_data {
 	unsigned gpio_sda;
 	unsigned gpio_sck;
+	void (*hw_reset)(bool active);
 
 	struct rtl8367_extif_config *extif0_cfg;
 	struct rtl8367_extif_config *extif1_cfg;

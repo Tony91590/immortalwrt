@@ -1,14 +1,40 @@
 #!/bin/sh
 # Copyright (C) 2006 OpenWrt.org
 
-. /etc/functions.sh
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
 
 usage() {
 	cat <<EOF
-Usage: $0 [down|detect]
-enables (default), disables or detects a wifi configuration.
+Usage: $0 [config|up|down|reconf|reload|status|isup]
+enables (default), disables or configures devices not yet configured.
 EOF
 	exit 1
+}
+
+ubus_wifi_cmd() {
+	local cmd="$1"
+	local dev="$2"
+
+	json_init
+	[ -n "$dev" ] && json_add_string device "$dev"
+	ubus call network.wireless "$cmd" "$(json_dump)"
+}
+
+wifi_isup() {
+	local dev="$1"
+
+	json_load "$(ubus_wifi_cmd "status" "$dev")"
+	json_get_keys devices
+
+	for device in $devices; do
+		json_select "$device"
+			json_get_var up up
+			[ $up -eq 0 ] && return 1
+		json_select ..
+	done
+
+	return 0
 }
 
 find_net_config() {(
@@ -38,9 +64,12 @@ bridge_interface() {(
 	include /lib/network
 	scan_interfaces
 
-	config_get iftype "$cfg" type
-	[ "$iftype" = bridge ] && config_get "$cfg" ifname
-	prepare_interface_bridge "$cfg"
+	for cfg in $cfg; do
+		config_get iftype "$cfg" type
+		[ "$iftype" = bridge ] && config_get "$cfg" ifname
+		prepare_interface_bridge "$cfg"
+		return $?
+	done
 )}
 
 prepare_key_wep() {
@@ -51,7 +80,7 @@ prepare_key_wep() {
 	[ "${#key}" -eq 10 -a $hex -eq 1 ] || \
 	[ "${#key}" -eq 26 -a $hex -eq 1 ] || {
 		[ "${key:0:2}" = "s:" ] && key="${key#s:}"
-        	key="$(echo -n "$key" | hexdump -ve '1/1 "%02x" ""')"
+		key="$(echo -n "$key" | hexdump -ve '1/1 "%02x" ""')"
 	}
 	echo "$key"
 }
@@ -66,6 +95,7 @@ wifi_fixup_hwmode() {
 	case "$hwmode" in
 		11bg) hwmode=bg;;
 		11a) hwmode=a;;
+		11ad) hwmode=ad;;
 		11b) hwmode=b;;
 		11g) hwmode=g;;
 		11n*)
@@ -78,7 +108,7 @@ wifi_fixup_hwmode() {
 		;;
 		*)
 			hwmode=
-			if [ "${channel:-0}" -gt 0 ]; then 
+			if [ "${channel:-0}" -gt 0 ]; then
 				if [ "${channel:-0}" -gt 14 ]; then
 					hwmode=a
 				else
@@ -92,14 +122,10 @@ wifi_fixup_hwmode() {
 	config_set "$device" hwmode "$hwmode"
 }
 
-wifi_updown() {
-	[ enable = "$1" ] && {
-		wifi_updown disable "$2"
-		scan_wifi
-	}
+_wifi_updown() {
 	for device in ${2:-$DEVICES}; do (
 		config_get disabled "$device" disabled
-		[ 1 == "$disabled" ] && {
+		[ "$disabled" = "1" ] && {
 			echo "'$device' is disabled"
 			set disable
 		}
@@ -107,14 +133,52 @@ wifi_updown() {
 		if eval "type ${1}_$iftype" 2>/dev/null >/dev/null; then
 			eval "scan_$iftype '$device'"
 			eval "${1}_$iftype '$device'" || echo "$device($iftype): ${1} failed"
-		else
+		elif [ ! -f /lib/netifd/wireless/$iftype.sh ]; then
 			echo "$device($iftype): Interface type not supported"
 		fi
 	); done
 }
 
-wifi_detect() {
-	for driver in ${2:-$DRIVERS}; do (
+wifi_updown() {
+	cmd=down
+	[ enable = "$1" ] && {
+		_wifi_updown disable "$2"
+		ubus_wifi_cmd "$cmd" "$2"
+		ubus call network reload
+		scan_wifi
+		cmd=up
+	}
+	[ reconf = "$1" ] && {
+		ubus call network reload
+		scan_wifi
+		cmd=reconf
+	}
+	ubus_wifi_cmd "$cmd" "$2"
+	_wifi_updown "$@"
+}
+
+wifi_reload_legacy() {
+	_wifi_updown "disable" "$1"
+	scan_wifi
+	_wifi_updown "enable" "$1"
+}
+
+wifi_reload() {
+	ubus call network reload
+	wifi_reload_legacy
+}
+
+wifi_detect_notice() {
+	>&2 echo "WARNING: Wifi detect is deprecated. Use wifi config instead"
+	>&2 echo "For more information, see commit 5f8f8a366136a07df661e31decce2458357c167a"
+	exit 1
+}
+
+wifi_config() {
+	[ -e /tmp/.config_pending ] && return
+	[ ! -f /etc/config/wireless ] && touch /etc/config/wireless
+
+	for driver in $DRIVERS; do (
 		if eval "type detect_$driver" 2>/dev/null >/dev/null; then
 			eval "detect_$driver" || echo "$driver: Detect failed" >&2
 		else
@@ -132,7 +196,9 @@ start_net() {(
 	[ -z "$config" ] || {
 		include /lib/network
 		scan_interfaces
-		setup_interface "$iface" "$config" "" "$vifmac"
+		for config in $config; do
+			setup_interface "$iface" "$config" "" "$vifmac"
+		done
 	}
 )}
 
@@ -177,7 +243,7 @@ scan_wifi() {
 		case "$TYPE" in
 			wifi-iface)
 				config_get device "$CONFIG_SECTION" device
-				config_get vifs "$device" vifs 
+				config_get vifs "$device" vifs
 				append vifs "$CONFIG_SECTION"
 				config_set "$device" vifs "$vifs"
 			;;
@@ -193,7 +259,14 @@ scan_wifi
 
 case "$1" in
 	down) wifi_updown "disable" "$2";;
-	detect) wifi_detect "$2";;
+	detect) wifi_detect_notice ;;
+	config) wifi_config ;;
+	status) ubus_wifi_cmd "status" "$2";;
+	isup) wifi_isup "$2"; exit $?;;
+	reload) wifi_reload "$2";;
+	reload_legacy) wifi_reload_legacy "$2";;
 	--help|help) usage;;
-	*) wifi_updown "enable" "$2";;
+	reconf) wifi_updown "reconf" "$2";;
+	''|up) wifi_updown "enable" "$2";;
+	*) usage; exit 1;;
 esac

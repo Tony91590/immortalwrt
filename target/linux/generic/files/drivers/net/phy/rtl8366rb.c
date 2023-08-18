@@ -4,6 +4,7 @@
  * Copyright (C) 2009-2010 Gabor Juhos <juhosg@openwrt.org>
  * Copyright (C) 2010 Antti Seppälä <a.seppala@gmail.com>
  * Copyright (C) 2010 Roman Yeryomin <roman@advem.lv>
+ * Copyright (C) 2011 Colin Leitner <colin.leitner@googlemail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -13,7 +14,9 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
+#include <linux/device.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/delay.h>
 #include <linux/skbuff.h>
 #include <linux/rtl8366.h>
@@ -21,7 +24,7 @@
 #include "rtl8366_smi.h"
 
 #define RTL8366RB_DRIVER_DESC	"Realtek RTL8366RB ethernet switch driver"
-#define RTL8366RB_DRIVER_VER	"0.2.3"
+#define RTL8366RB_DRIVER_VER	"0.2.4"
 
 #define RTL8366RB_PHY_NO_MAX	4
 #define RTL8366RB_PHY_PAGE_MAX	7
@@ -41,6 +44,17 @@
 
 /* Port Enable Control register */
 #define RTL8366RB_PECR				0x0001
+
+/* Port Mirror Control Register */
+#define RTL8366RB_PMCR				0x0007
+#define RTL8366RB_PMCR_SOURCE_PORT(_x)		(_x)
+#define RTL8366RB_PMCR_SOURCE_PORT_MASK		0x000f
+#define RTL8366RB_PMCR_MONITOR_PORT(_x)		((_x) << 4)
+#define RTL8366RB_PMCR_MONITOR_PORT_MASK	0x00f0
+#define RTL8366RB_PMCR_MIRROR_RX		BIT(8)
+#define RTL8366RB_PMCR_MIRROR_TX		BIT(9)
+#define RTL8366RB_PMCR_MIRROR_SPC		BIT(10)
+#define RTL8366RB_PMCR_MIRROR_ISO		BIT(11)
 
 /* Switch Security Control registers */
 #define RTL8366RB_SSCR0				0x0002
@@ -191,6 +205,9 @@
 #define RTL8366RB_QOS_DEFAULT_PREIFG	1
 
 
+#define RTL8366RB_MIB_RXB_ID		0	/* IfInOctets */
+#define RTL8366RB_MIB_TXB_ID		20	/* IfOutOctets */
+
 static struct rtl8366_mib_counter rtl8366rb_mib_counters[] = {
 	{ 0,  0, 4, "IfInOctets"				},
 	{ 0,  4, 4, "EtherStatsOctets"				},
@@ -268,6 +285,31 @@ static int rtl8366rb_reset_chip(struct rtl8366_smi *smi)
 static int rtl8366rb_setup(struct rtl8366_smi *smi)
 {
 	int err;
+#ifdef CONFIG_OF
+	unsigned i;
+	struct device_node *np;
+	unsigned num_initvals;
+	const __be32 *paddr;
+
+	np = smi->parent->of_node;
+
+	paddr = of_get_property(np, "realtek,initvals", &num_initvals);
+	if (paddr) {
+		dev_info(smi->parent, "applying initvals from DTS\n");
+
+		if (num_initvals < (2 * sizeof(*paddr)))
+			return -EINVAL;
+
+		num_initvals /= sizeof(*paddr);
+
+		for (i = 0; i < num_initvals - 1; i += 2) {
+			u32 reg = be32_to_cpup(paddr + i);
+			u32 val = be32_to_cpup(paddr + i + 1);
+
+			REG_WR(smi, reg, val);
+		}
+	}
+#endif
 
 	/* set maximum packet length to 1536 bytes */
 	REG_RMW(smi, RTL8366RB_SGCR, RTL8366RB_SGCR_MAX_LENGTH_MASK,
@@ -920,6 +962,180 @@ static int rtl8366rb_sw_get_qos_enable(struct switch_dev *dev,
 	return 0;
 }
 
+static int rtl8366rb_sw_set_mirror_rx_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	if (val->value.i)
+		data = RTL8366RB_PMCR_MIRROR_RX;
+	else
+		data = 0;
+
+	return rtl8366_smi_rmwr(smi, RTL8366RB_PMCR, RTL8366RB_PMCR_MIRROR_RX, data);
+}
+
+static int rtl8366rb_sw_get_mirror_rx_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	rtl8366_smi_read_reg(smi, RTL8366RB_PMCR, &data);
+	if (data & RTL8366RB_PMCR_MIRROR_RX)
+		val->value.i = 1;
+	else
+		val->value.i = 0;
+
+	return 0;
+}
+
+static int rtl8366rb_sw_set_mirror_tx_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	if (val->value.i)
+		data = RTL8366RB_PMCR_MIRROR_TX;
+	else
+		data = 0;
+
+	return rtl8366_smi_rmwr(smi, RTL8366RB_PMCR, RTL8366RB_PMCR_MIRROR_TX, data);
+}
+
+static int rtl8366rb_sw_get_mirror_tx_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	rtl8366_smi_read_reg(smi, RTL8366RB_PMCR, &data);
+	if (data & RTL8366RB_PMCR_MIRROR_TX)
+		val->value.i = 1;
+	else
+		val->value.i = 0;
+
+	return 0;
+}
+
+static int rtl8366rb_sw_set_monitor_isolation_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	if (val->value.i)
+		data = RTL8366RB_PMCR_MIRROR_ISO;
+	else
+		data = 0;
+
+	return rtl8366_smi_rmwr(smi, RTL8366RB_PMCR, RTL8366RB_PMCR_MIRROR_ISO, data);
+}
+
+static int rtl8366rb_sw_get_monitor_isolation_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	rtl8366_smi_read_reg(smi, RTL8366RB_PMCR, &data);
+	if (data & RTL8366RB_PMCR_MIRROR_ISO)
+		val->value.i = 1;
+	else
+		val->value.i = 0;
+
+	return 0;
+}
+
+static int rtl8366rb_sw_set_mirror_pause_frames_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	if (val->value.i)
+		data = RTL8366RB_PMCR_MIRROR_SPC;
+	else
+		data = 0;
+
+	return rtl8366_smi_rmwr(smi, RTL8366RB_PMCR, RTL8366RB_PMCR_MIRROR_SPC, data);
+}
+
+static int rtl8366rb_sw_get_mirror_pause_frames_enable(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	rtl8366_smi_read_reg(smi, RTL8366RB_PMCR, &data);
+	if (data & RTL8366RB_PMCR_MIRROR_SPC)
+		val->value.i = 1;
+	else
+		val->value.i = 0;
+
+	return 0;
+}
+
+static int rtl8366rb_sw_set_mirror_monitor_port(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	data = RTL8366RB_PMCR_MONITOR_PORT(val->value.i);
+
+	return rtl8366_smi_rmwr(smi, RTL8366RB_PMCR, RTL8366RB_PMCR_MONITOR_PORT_MASK, data);
+}
+
+static int rtl8366rb_sw_get_mirror_monitor_port(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	rtl8366_smi_read_reg(smi, RTL8366RB_PMCR, &data);
+	val->value.i = (data & RTL8366RB_PMCR_MONITOR_PORT_MASK) >> 4;
+
+	return 0;
+}
+
+static int rtl8366rb_sw_set_mirror_source_port(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	data = RTL8366RB_PMCR_SOURCE_PORT(val->value.i);
+
+	return rtl8366_smi_rmwr(smi, RTL8366RB_PMCR, RTL8366RB_PMCR_SOURCE_PORT_MASK, data);
+}
+
+static int rtl8366rb_sw_get_mirror_source_port(struct switch_dev *dev,
+				    const struct switch_attr *attr,
+				    struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+
+	rtl8366_smi_read_reg(smi, RTL8366RB_PMCR, &data);
+	val->value.i = data & RTL8366RB_PMCR_SOURCE_PORT_MASK;
+
+	return 0;
+}
+
 static int rtl8366rb_sw_reset_port_mibs(struct switch_dev *dev,
 				       const struct switch_attr *attr,
 				       struct switch_val *val)
@@ -931,6 +1147,13 @@ static int rtl8366rb_sw_reset_port_mibs(struct switch_dev *dev,
 
 	return rtl8366_smi_rmwr(smi, RTL8366RB_MIB_CTRL_REG, 0,
 				RTL8366RB_MIB_CTRL_PORT_RESET(val->port_vlan));
+}
+
+static int rtl8366rb_sw_get_port_stats(struct switch_dev *dev, int port,
+					struct switch_port_stats *stats)
+{
+	return (rtl8366_sw_get_port_stats(dev, port, stats,
+				RTL8366RB_MIB_TXB_ID, RTL8366RB_MIB_RXB_ID));
 }
 
 static struct switch_attr rtl8366rb_globals[] = {
@@ -977,6 +1200,48 @@ static struct switch_attr rtl8366rb_globals[] = {
 		.set = rtl8366rb_sw_set_qos_enable,
 		.get = rtl8366rb_sw_get_qos_enable,
 		.max = 1
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "enable_mirror_rx",
+		.description = "Enable mirroring of RX packets",
+		.set = rtl8366rb_sw_set_mirror_rx_enable,
+		.get = rtl8366rb_sw_get_mirror_rx_enable,
+		.max = 1
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "enable_mirror_tx",
+		.description = "Enable mirroring of TX packets",
+		.set = rtl8366rb_sw_set_mirror_tx_enable,
+		.get = rtl8366rb_sw_get_mirror_tx_enable,
+		.max = 1
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "enable_monitor_isolation",
+		.description = "Enable isolation of monitor port (TX packets will be dropped)",
+		.set = rtl8366rb_sw_set_monitor_isolation_enable,
+		.get = rtl8366rb_sw_get_monitor_isolation_enable,
+		.max = 1
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "enable_mirror_pause_frames",
+		.description = "Enable mirroring of RX pause frames",
+		.set = rtl8366rb_sw_set_mirror_pause_frames_enable,
+		.get = rtl8366rb_sw_get_mirror_pause_frames_enable,
+		.max = 1
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "mirror_monitor_port",
+		.description = "Mirror monitor port",
+		.set = rtl8366rb_sw_set_mirror_monitor_port,
+		.get = rtl8366rb_sw_get_mirror_monitor_port,
+		.max = 5
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "mirror_source_port",
+		.description = "Mirror source port",
+		.set = rtl8366rb_sw_set_mirror_source_port,
+		.get = rtl8366rb_sw_get_mirror_source_port,
+		.max = 5
 	},
 };
 
@@ -1062,6 +1327,7 @@ static const struct switch_dev_ops rtl8366_ops = {
 	.set_port_pvid = rtl8366_sw_set_port_pvid,
 	.reset_switch = rtl8366_sw_reset_switch,
 	.get_port_link = rtl8366rb_sw_get_port_link,
+	.get_port_stats = rtl8366rb_sw_get_port_stats,
 };
 
 static int rtl8366rb_switch_init(struct rtl8366_smi *smi)
@@ -1168,10 +1434,9 @@ static struct rtl8366_smi_ops rtl8366rb_smi_ops = {
 	.enable_port	= rtl8366rb_enable_port,
 };
 
-static int __devinit rtl8366rb_probe(struct platform_device *pdev)
+static int rtl8366rb_probe(struct platform_device *pdev)
 {
 	static int rtl8366_smi_version_printed;
-	struct rtl8366_platform_data *pdata;
 	struct rtl8366_smi *smi;
 	int err;
 
@@ -1179,21 +1444,10 @@ static int __devinit rtl8366rb_probe(struct platform_device *pdev)
 		printk(KERN_NOTICE RTL8366RB_DRIVER_DESC
 		       " version " RTL8366RB_DRIVER_VER"\n");
 
-	pdata = pdev->dev.platform_data;
-	if (!pdata) {
-		dev_err(&pdev->dev, "no platform data specified\n");
-		err = -EINVAL;
-		goto err_out;
-	}
+	smi = rtl8366_smi_probe(pdev);
+	if (IS_ERR(smi))
+		return PTR_ERR(smi);
 
-	smi = rtl8366_smi_alloc(&pdev->dev);
-	if (!smi) {
-		err = -ENOMEM;
-		goto err_out;
-	}
-
-	smi->gpio_sda = pdata->gpio_sda;
-	smi->gpio_sck = pdata->gpio_sck;
 	smi->clk_delay = 10;
 	smi->cmd_read = 0xa9;
 	smi->cmd_write = 0xa8;
@@ -1221,11 +1475,10 @@ static int __devinit rtl8366rb_probe(struct platform_device *pdev)
 	rtl8366_smi_cleanup(smi);
  err_free_smi:
 	kfree(smi);
- err_out:
 	return err;
 }
 
-static int __devexit rtl8366rb_remove(struct platform_device *pdev)
+static int rtl8366rb_remove(struct platform_device *pdev)
 {
 	struct rtl8366_smi *smi = platform_get_drvdata(pdev);
 
@@ -1239,13 +1492,22 @@ static int __devexit rtl8366rb_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id rtl8366rb_match[] = {
+	{ .compatible = "realtek,rtl8366rb" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, rtl8366rb_match);
+#endif
+
 static struct platform_driver rtl8366rb_driver = {
 	.driver = {
 		.name		= RTL8366RB_DRIVER_NAME,
 		.owner		= THIS_MODULE,
+		.of_match_table = of_match_ptr(rtl8366rb_match),
 	},
 	.probe		= rtl8366rb_probe,
-	.remove		= __devexit_p(rtl8366rb_remove),
+	.remove		= rtl8366rb_remove,
 };
 
 static int __init rtl8366rb_module_init(void)
@@ -1265,5 +1527,6 @@ MODULE_VERSION(RTL8366RB_DRIVER_VER);
 MODULE_AUTHOR("Gabor Juhos <juhosg@openwrt.org>");
 MODULE_AUTHOR("Antti Seppälä <a.seppala@gmail.com>");
 MODULE_AUTHOR("Roman Yeryomin <roman@advem.lv>");
+MODULE_AUTHOR("Colin Leitner <colin.leitner@googlemail.com>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" RTL8366RB_DRIVER_NAME);

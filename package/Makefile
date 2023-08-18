@@ -7,92 +7,105 @@
 
 curdir:=package
 
+include $(INCLUDE_DIR)/feeds.mk
+include $(INCLUDE_DIR)/rootfs.mk
+
 -include $(TMP_DIR)/.packagedeps
+package-y += kernel/linux
+$(curdir)/autoremove:=1
 $(curdir)/builddirs:=$(sort $(package-) $(package-y) $(package-m))
-ifeq ($(SDK),1)
-  $(curdir)/builddirs-install:=.
-else
-  $(curdir)/builddirs-default:=. $(sort $(package-y) $(package-m))
-  $(curdir)/builddirs-prereq:=. $(sort $(prereq-y) $(prereq-m))
-  $(curdir)/builddirs-install:=. $(filter-out base-files,$(sort $(package-y))) $(filter base-files,$(package-y))
+$(curdir)/builddirs-default:=. $(sort $(package-y) $(package-m))
+$(curdir)/builddirs-prereq:=. $(sort $(prereq-y) $(prereq-m))
+ifdef CHECK_ALL
+$(curdir)/builddirs-check:=$($(curdir)/builddirs)
+$(curdir)/builddirs-download:=$($(curdir)/builddirs)
 endif
 ifneq ($(IGNORE_ERRORS),)
-  $(curdir)/builddirs-ignore-compile:= $(if $(filter n m y, $(IGNORE_ERRORS)),$(foreach m,$(IGNORE_ERRORS),$(package-$(subst n,,$(m)))),$(package-m) $(package-))
+  package-y-filter := $(package-y)
+  package-m-filter := $(filter-out $(package-y),$(package-m))
+  package-n-filter := $(filter-out $(package-y) $(package-m),$(package-))
+  package-ignore-errors := $(filter n m y,$(IGNORE_ERRORS))
+  package-ignore-errors := $(if $(package-ignore-errors),$(package-ignore-errors),n m)
+  package-ignore-subdirs := $(sort $(foreach m,$(package-ignore-errors),$(package-$(m)-filter)))
+  $(curdir)/builddirs-ignore-download := $(package-ignore-subdirs)
+  $(curdir)/builddirs-ignore-compile := $(package-ignore-subdirs)
+  $(curdir)/builddirs-ignore-host-download := $(package-ignore-subdirs)
+  $(curdir)/builddirs-ignore-host-compile := $(package-ignore-subdirs)
 endif
 
-$(curdir)/install:=$(curdir)/install-cleanup
+PACKAGE_INSTALL_FILES:= \
+	$(foreach pkg,$(sort $(package-y)), \
+		$(foreach variant, \
+			$(if $(strip $(package/$(pkg)/variants)), \
+				$(package/$(pkg)/variants), \
+				$(if $(package/$(pkg)/default-variant), \
+					$(package/$(pkg)/default-variant), \
+					default \
+				) \
+			), \
+			$(PKG_INFO_DIR)/$(lastword $(subst /,$(space),$(pkg))).$(variant).install \
+		) \
+	)
 
 $(curdir)/cleanup: $(TMP_DIR)/.build
-	- find $(STAGING_DIR_ROOT) -type d | $(XARGS) chmod 0755
-	rm -rf $(TARGET_DIR) $(STAGING_DIR_ROOT)
+	rm -rf $(STAGING_DIR_ROOT)
 
-ifdef CONFIG_USE_MKLIBS
-  define mklibs
-	rm -rf $(TMP_DIR)/mklibs-progs $(TMP_DIR)/mklibs-out
-	# first find all programs and add them to the mklibs list
-	find $(STAGING_DIR_ROOT) -type f -perm +100 -exec \
-		file -r -N -F '' {} + | \
-		awk ' /executable.*dynamically/ { print $$1 }' > $(TMP_DIR)/mklibs-progs
-	# find all loadable objects that are not regular libraries and add them to the list as well
-	find $(STAGING_DIR_ROOT) -type f -name \*.so\* -exec \
-		file -r -N -F '' {} + | \
-		awk ' /shared object/ { print $$1 }' >> $(TMP_DIR)/mklibs-progs
-	mkdir -p $(TMP_DIR)/mklibs-out
-	$(STAGING_DIR_HOST)/bin/mklibs.py -D \
-		-d $(TMP_DIR)/mklibs-out \
-		--sysroot $(STAGING_DIR_ROOT) \
-		-L /lib \
-		-L /usr/lib \
-		-L /usr/lib/ebtables \
-		--ldlib $(patsubst $(STAGING_DIR_ROOT)/%,/%,$(firstword $(wildcard \
-			$(foreach name,ld-uClibc.so.* ld-linux.so.* ld-*.so, \
-			  $(STAGING_DIR_ROOT)/lib/$(name) \
-			)))) \
-		--target $(REAL_GNU_TARGET_NAME) \
-		`cat $(TMP_DIR)/mklibs-progs` 2>&1
-	$(RSTRIP) $(TMP_DIR)/mklibs-out
-	for lib in `ls $(TMP_DIR)/mklibs-out/*.so.* 2>/dev/null`; do \
-		LIB="$${lib##*/}"; \
-		DEST="`ls "$(TARGET_DIR)/lib/$$LIB" "$(TARGET_DIR)/usr/lib/$$LIB" 2>/dev/null`"; \
-		[ -n "$$DEST" ] || continue; \
-		echo "Copying stripped library $$lib to $$DEST"; \
-		cp "$$lib" "$$DEST" || exit 1; \
-	done
-  endef
+$(curdir)/merge:
+	rm -rf $(PACKAGE_DIR_ALL)
+	mkdir -p $(PACKAGE_DIR_ALL)
+	-$(foreach pdir,$(PACKAGE_SUBDIRS),$(if $(wildcard $(pdir)/*.ipk),ln -s $(pdir)/*.ipk $(PACKAGE_DIR_ALL);))
+
+$(curdir)/merge-index: $(curdir)/merge
+	(cd $(PACKAGE_DIR_ALL) && $(SCRIPT_DIR)/ipkg-make-index.sh . 2>&1 > Packages; )
+
+ifndef SDK
+  $(curdir)/compile: $(curdir)/system/opkg/host/compile
 endif
 
-$(curdir)/rootfs-prepare: $(TMP_DIR)/.build
-	@-$(MAKE) package/preconfig
-	@if [ -d $(TOPDIR)/files ]; then \
-		( cd $(TOPDIR)/files; find -type f ) | \
-			( cd $(TARGET_DIR); while :; do \
-				read FILE; \
-				[ -z "$$FILE" ] && break; \
-				[ -L "$$FILE" ] || continue; \
-				echo "Removing symlink $(TARGET_DIR)/$$FILE"; \
-				rm -f "$$FILE"; \
-			done; ); \
-		$(CP) $(TOPDIR)/files/. $(TARGET_DIR); \
-	fi
-	@mkdir -p $(TARGET_DIR)/etc/rc.d
-	@( \
-		cd $(TARGET_DIR); \
-		for script in ./etc/init.d/*; do \
-			grep '#!/bin/sh /etc/rc.common' $$script >/dev/null || continue; \
-			IPKG_INSTROOT=$(TARGET_DIR) $$(which bash) ./etc/rc.common $$script enable; \
-		done || true \
-	)
-	@-find $(TARGET_DIR) -name CVS   | $(XARGS) rm -rf
-	@-find $(TARGET_DIR) -name .svn  | $(XARGS) rm -rf
-	@-find $(TARGET_DIR) -name '.#*' | $(XARGS) rm -f
-	rm -f $(TARGET_DIR)/usr/lib/opkg/info/*.postinst
-	$(if $(CONFIG_CLEAN_IPKG),rm -rf $(TARGET_DIR)/usr/lib/opkg)
-	$(call mklibs)
+$(curdir)/install: $(TMP_DIR)/.build $(curdir)/merge $(if $(CONFIG_TARGET_PER_DEVICE_ROOTFS),$(curdir)/merge-index)
+	- find $(STAGING_DIR_ROOT) -type d | $(XARGS) chmod 0755
+	rm -rf $(TARGET_DIR) $(TARGET_DIR_ORIG)
+	mkdir -p $(TARGET_DIR)/tmp
+	$(file >$(TMP_DIR)/opkg_install_list,\
+	  $(call opkg_package_files,\
+	    $(foreach pkg,$(shell cat $(PACKAGE_INSTALL_FILES) 2>/dev/null),$(pkg)$(call GetABISuffix,$(pkg)))))
+	$(call opkg,$(TARGET_DIR)) install $$(cat $(TMP_DIR)/opkg_install_list)
+	@for file in $(PACKAGE_INSTALL_FILES); do \
+		[ -s $$file.flags ] || continue; \
+		for flag in `cat $$file.flags`; do \
+			$(call opkg,$(TARGET_DIR)) flag $$flag `cat $$file`; \
+		done; \
+	done || true
+
+	$(CP) $(TARGET_DIR) $(TARGET_DIR_ORIG)
+
+	$(call prepare_rootfs,$(TARGET_DIR),$(TOPDIR)/files)
 
 $(curdir)/index: FORCE
-	@(cd $(PACKAGE_DIR); $(SCRIPT_DIR)/ipkg-make-index.sh . 2>&1 > Packages && \
-		gzip -9c Packages > Packages.gz \
-	)
+	@echo Generating package index...
+	@for d in $(PACKAGE_SUBDIRS); do ( \
+		mkdir -p $$d; \
+		cd $$d || continue; \
+		$(SCRIPT_DIR)/ipkg-make-index.sh . 2>&1 > Packages.manifest; \
+		grep -vE '^(Maintainer|LicenseFiles|Source|SourceName|Require|SourceDateEpoch)' Packages.manifest > Packages; \
+		case "$$(((64 + $$(stat -L -c%s Packages)) % 128))" in 110|111) \
+			$(call ERROR_MESSAGE,WARNING: Applying padding in $$d/Packages to workaround usign SHA-512 bug!); \
+			{ echo ""; echo ""; } >> Packages;; \
+		esac; \
+		echo -n '{"architecture": "$(ARCH_PACKAGES)", "packages":{' > index.json; \
+		sed -n -e 's/^Package: \(.*\)$$/"\1":/p' -e 's/^Version: \(.*\)$$/"\1",/p' Packages | tr '\n' ' ' >> index.json; \
+		echo '}}' >> index.json; \
+		sed -i 's/, }}/}}/' index.json; \
+		gzip -9nc Packages > Packages.gz; \
+	); done
+ifdef CONFIG_SIGNED_PACKAGES
+	@echo Signing package index...
+	@for d in $(PACKAGE_SUBDIRS); do ( \
+		[ -d $$d ] && \
+			cd $$d || continue; \
+		$(STAGING_DIR_HOST)/bin/usign -S -m Packages -s $(BUILD_KEY); \
+	); done
+endif
 
 $(curdir)/flags-install:= -j1
 
@@ -100,6 +113,6 @@ $(eval $(call stampfile,$(curdir),package,prereq,.config))
 $(eval $(call stampfile,$(curdir),package,cleanup,$(TMP_DIR)/.build))
 $(eval $(call stampfile,$(curdir),package,compile,$(TMP_DIR)/.build))
 $(eval $(call stampfile,$(curdir),package,install,$(TMP_DIR)/.build))
-$(eval $(call stampfile,$(curdir),package,rootfs-prepare,$(TMP_DIR)/.build))
+$(eval $(call stampfile,$(curdir),package,check,$(TMP_DIR)/.build))
 
 $(eval $(call subdir,$(curdir)))

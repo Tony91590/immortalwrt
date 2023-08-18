@@ -1,26 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2009-2011 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2013 OpenWrt.org
+
 include $(TOPDIR)/rules.mk
 
-ARCH:=mips
+ARCH:=mips64
 BOARD:=octeon
 BOARDNAME:=Cavium Networks Octeon
-FEATURES:=squashfs jffs2 pci usb
-CFLAGS:=-Os -pipe -march=octeon -fno-caller-saves
-MAINTAINER:=Florian Fainelli <florian@openwrt.org>
+FEATURES:=squashfs ramdisk pci usb
+CPU_TYPE:=octeonplus
 
-LINUX_VERSION:=2.6.37.6
-
-include $(INCLUDE_DIR)/target.mk
-
-DEFAULT_PACKAGES += wpad-mini
+KERNEL_PATCHVER:=5.15
 
 define Target/Description
 	Build firmware images for Cavium Networks Octeon-based boards.
 endef
+
+include $(INCLUDE_DIR)/target.mk
+
+DEFAULT_PACKAGES += mkf2fs e2fsprogs
 
 $(eval $(call BuildTarget))

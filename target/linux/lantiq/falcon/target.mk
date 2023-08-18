@@ -1,12 +1,11 @@
 ARCH:=mips
 SUBTARGET:=falcon
 BOARDNAME:=Falcon
-FEATURES:=squashfs jffs2
-DEVICE_TYPE:=other
+FEATURES+=nand source-only
+CPU_TYPE:=24kc
 
-DEFAULT_PACKAGES+= kmod-ifxos gpon-base-files kmod-leds-gpio kmod-ledtrig-heartbeat \
-	kmod-gpon-optic-drv gpon-optic-drv kmod-gpon-onu-drv gpon-onu-drv \
-	gpon-pe-firmware gpon-omci-api gpon-omci-onu gpon-luci
+DEFAULT_PACKAGES+= kmod-leds-gpio \
+	kmod-gpio-button-hotplug
 
 define Target/Description
 	Lantiq Falcon

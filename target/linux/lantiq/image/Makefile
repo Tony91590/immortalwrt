@@ -1,249 +1,176 @@
-# 
-# Copyright (C) 2010-2012 OpenWrt.org
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2010-2016 OpenWrt.org
+
+# boards missing since devicetree update
+#EASY50712 ARV3527P
+
+KERNEL_LOADADDR = 0x80002000
+KERNEL_ENTRY = 0x80002000
+
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
 
-JFFS2_BLOCKSIZE = 64k 128k 256k
-
-ase_cmdline=-console=ttyLTQ0,115200 rootfstype=squashfs,jffs2
-xway_cmdline=-console=ttyLTQ1,115200 rootfstype=squashfs,jffs2
-falcon_cmdline=-console=ttyLTQ0,115200 rootfstype=squashfs,jffs2
-sx76x_cmdline=console=ttyLTQ1,115200 rootfstype=squashfs,jffs2
-
-define CompressLzma
-  $(STAGING_DIR_HOST)/bin/lzma e $(1) $(2)
-endef
-
-define PatchKernelLzma
-	cp $(KDIR)/vmlinux $(KDIR)/vmlinux-$(1)
-	$(STAGING_DIR_HOST)/bin/patch-cmdline $(KDIR)/vmlinux-$(1) '$(strip $(2))'
-	$(call CompressLzma,$(KDIR)/vmlinux-$(1),$(KDIR)/vmlinux-$(1).lzma)
-endef
-
-define MkBrnImage
-	mkbrncmdline -i $(KDIR)/vmlinux-$(4) -o $(KDIR)/vmlinux-$(4)-brn BRN-BOOT $(6)
-	$(call CompressLzma,$(KDIR)/vmlinux-$(4)-brn,$(KDIR)/vmlinux-$(4)-brn.lzma)
-	mkbrnimg -s $(1) -m $(2) -o $(3) $(KDIR)/vmlinux-$(4)-brn.lzma $(KDIR)/root.$(5)
-endef
-
-define MkImageLzma
-	mkimage -A mips -O linux -T kernel -a 0x80002000 -C lzma \
-		-e 0x80002000 -n 'MIPS OpenWrt Linux-$(LINUX_VERSION)' \
-		-d $(KDIR)/vmlinux-$(1).lzma $(KDIR)/uImage-$(1)
-endef
-
-define MkImageEVA
-	lzma2eva 0x80002000 0x80002000 $(KDIR)/vmlinux-$(1).lzma $(KDIR)/$(1).eva.prealign
-	dd if=$(KDIR)/$(1).eva.prealign of=$(KDIR)/$(1).eva bs=64k conv=sync
-	cat ./eva.dummy.squashfs >> $(KDIR)/$(1).eva
-endef
-
-define Image/Build/squashfs
-	cat $(KDIR)/uImage-$(2) $(KDIR)/root.$(1) > $(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image
-	$(call prepare_generic_squashfs,$(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image)
-	$(if $(3),$(call MkBrnImage,$(3),$(4),$(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(3)-brnImage,$(2),$(1),$(5)))
-endef
-
-define Image/BuildEVA/squashfs
-	cat $(KDIR)/$(2).eva $(KDIR)/root.$(1) > $(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image.eva
-	$(call prepare_generic_squashfs,$(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image.eva)
-endef
-
-define Image/Build/jffs2-64k
-	dd if=$(KDIR)/uImage-$(2) of=$(KDIR)/uImage-$(2)-$(1) bs=64k conv=sync
-	cat $(KDIR)/uImage-$(2)-$(1) $(KDIR)/root.$(1) > $(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image
-endef
-
-define Image/Build/jffs2-128k
-	dd if=$(KDIR)/uImage-$(2) of=$(KDIR)/uImage-$(2)-$(1) bs=128k conv=sync
-	cat $(KDIR)/uImage-$(2)-$(1) $(KDIR)/root.$(1) > $(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image
-endef
-
-define Image/Build/jffs2-256k
-	dd if=$(KDIR)/uImage-$(2) of=$(KDIR)/uImage-$(2)-$(1) bs=256k conv=sync
-	cat $(KDIR)/uImage-$(2)-$(1) $(KDIR)/root.$(1) > $(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(1).image
-endef
-
-define Image/BuildKernel/Template
-	$(call PatchKernelLzma,$(1),$(if $(2),$(2) machtype=$(1),))
-	$(call MkImageLzma,$(1))
-	$(CP) $(KDIR)/uImage-$(1) $(BIN_DIR)/$(IMG_PREFIX)-$(1)-uImage
-endef
-
-define Image/BuildKernelEVA/Template
-	$(call PatchKernelLzma,$(1),$(if $(2),$(2) machtype=$(1),))
-	$(call MkImageEVA,$(1))
-	$(CP) $(KDIR)/$(1).eva $(BIN_DIR)/$(IMG_PREFIX)-$(1).eva
-endef
-
-ifeq ($(CONFIG_TARGET_lantiq_danube),y)
-
-Image/BuildKernel/Profile/EASY50712=$(call Image/BuildKernel/Template,EASY50712,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV3527P=$(call Image/BuildKernel/Template,ARV3527P,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV4510PW=$(call Image/BuildKernel/Template,ARV4510PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV4518PW=$(call Image/BuildKernel/Template,ARV4518PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV4519PW=$(call Image/BuildKernel/Template,ARV4519PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV4520PW=$(call Image/BuildKernel/Template,ARV4520PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV4525PW=$(call Image/BuildKernel/Template,ARV4525PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV7525PW=$(call Image/BuildKernel/Template,ARV7525PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV452CPW=$(call Image/BuildKernel/Template,ARV452CPW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV7518PW=$(call Image/BuildKernel/Template,ARV7518PW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV752DPW=$(call Image/BuildKernel/Template,ARV752DPW,$(xway_cmdline))
-Image/BuildKernel/Profile/ARV752DPW22=$(call Image/BuildKernel/Template,ARV752DPW22,$(xway_cmdline))
-Image/BuildKernel/Profile/GIGASX76X=$(call Image/BuildKernel/Template,GIGASX76X,$(sx76x_cmdline))
-Image/BuildKernel/Profile/BTHOMEHUBV2B=$(call Image/BuildKernel/Template,BTHOMEHUBV2B,$(xway_cmdline))
-Image/BuildKernel/Profile/BTHOMEHUBV2BOPENRG=$(call Image/BuildKernel/Template,BTHOMEHUBV2BOPENRG,$(xway_cmdline))
-
-Image/Build/Profile/EASY50712=$(call Image/Build/$(1),$(1),EASY50712)
-Image/Build/Profile/ARV3527P=$(call Image/Build/$(1),$(1),ARV3527P)
-Image/Build/Profile/ARV4510PW=$(call Image/Build/$(1),$(1),ARV4510PW)
-Image/Build/Profile/ARV4518PW=$(call Image/Build/$(1),$(1),ARV4518PW)
-Image/Build/Profile/ARV4519PW=$(call Image/Build/$(1),$(1),ARV4519PW,BRNDA4519,0x12345678,memsize=32)
-Image/Build/Profile/ARV4520PW=$(call Image/Build/$(1),$(1),ARV4520PW,BRNDANUBE,0x12345678,memsize=32)
-Image/Build/Profile/ARV4525PW=$(call Image/Build/$(1),$(1),ARV4525PW,BRNDTW502,0x12345678,memsize=32)
-Image/Build/Profile/ARV7525PW=$(call Image/Build/$(1),$(1),ARV7525PW)
-Image/Build/Profile/ARV452CPW=$(call Image/Build/$(1),$(1),ARV452CPW)
-Image/Build/Profile/ARV7518PW=$(call Image/Build/$(1),$(1),ARV7518PW,BRNDA7519,0x12345678,memsize=64)
-Image/Build/Profile/ARV752DPW=$(call Image/Build/$(1),$(1),ARV752DPW)
-Image/Build/Profile/ARV752DPW22=$(call Image/Build/$(1),$(1),ARV752DPW22)
-Image/Build/Profile/GIGASX76X=$(call Image/Build/$(1),$(1),GIGASX76X)
-Image/Build/Profile/BTHOMEHUBV2B=$(call Image/Build/$(1),$(1),BTHOMEHUBV2B)
-Image/Build/Profile/BTHOMEHUBV2BOPENRG=$(call Image/Build/$(1),$(1),BTHOMEHUBV2BOPENRG)
-
-define Image/BuildKernel/Profile/Generic
-	$(call Image/BuildKernel/Template,EASY50712,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV3527P,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV4510PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV4518PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV4519PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV4520PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV452CPW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV4525PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV7525PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV7518PW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV752DPW,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,ARV752DPW22,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,GIGASX76X,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,BTHOMEHUBV2B,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,BTHOMEHUBV2BOPENRG,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,NONE)
-endef
-
-define Image/Build/Profile/Generic
-	$(call Image/Build/$(1),$(1),EASY50712)
-	$(call Image/Build/$(1),$(1),ARV3527P)
-	$(call Image/Build/$(1),$(1),ARV4510PW)
-	$(call Image/Build/$(1),$(1),ARV4518PW)
-	$(call Image/Build/$(1),$(1),ARV4519PW,BRNDA4519,0x12345678,memsize=32)
-	$(call Image/Build/$(1),$(1),ARV4520PW)
-	$(call Image/Build/$(1),$(1),ARV452CPW)
-	$(call Image/Build/$(1),$(1),ARV4525PW,BRNDTW502,0x12345678,memsize=32)
-	$(call Image/Build/$(1),$(1),ARV7525PW)
-	$(call Image/Build/$(1),$(1),ARV7518PW,BRNDA7519,0x12345678,memsize=32)
-	$(call Image/Build/$(1),$(1),ARV752DPW)
-	$(call Image/Build/$(1),$(1),ARV752DPW22)
-	$(call Image/Build/$(1),$(1),GIGASX76X)
-	$(call Image/Build/$(1),$(1),BTHOMEHUBV2B)
-	$(call Image/Build/$(1),$(1),BTHOMEHUBV2BOPENRG)
-	$(call Image/Build/$(1),$(1),NONE)
-	$(CP) $(KDIR)/root.$(1) $(BIN_DIR)/$(IMG_PREFIX)-$(1).rootfs
-endef
+ifeq ($(SUBTARGET),xway)
+	UBIFS_OPTS := -m 512 -e 15872 -c 1959
+else
+	UBIFS_OPTS := -m 2048 -e 126KiB -c 4096
 endif
 
-ifeq ($(CONFIG_TARGET_lantiq_ar9),y)
-Image/BuildKernel/Profile/WBMR=$(call Image/BuildKernel/Template,WBMR,$(xway_cmdline))
-Image/BuildKernel/Profile/DGN3500B=$(call Image/BuildKernel/Template,DGN3500B,$(xway_cmdline))
-Image/BuildKernel/Profile/FRITZ7320=$(call Image/BuildKernelEVA/Template,FRITZ7320,$(xway_cmdline))
-
-Image/Build/Profile/WBMR=$(call Image/Build/$(1),$(1),WBMR)
-Image/Build/Profile/DGN3500B=$(call Image/Build/$(1),$(1),DGN3500B)
-Image/Build/Profile/FRITZ7320=$(call Image/BuildEVA/$(1),$(1),FRITZ7320)
-
-define Image/BuildKernel/Profile/Generic
-	$(call Image/BuildKernel/Template,WBMR,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,DGN3500B,$(xway_cmdline))
-	$(call Image/BuildKernelEVA/Template,FRITZ7320,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,NONE)
+define Build/append-avm-fakeroot
+	cat ./eva.dummy.squashfs >> $@
 endef
 
-define Image/Build/Profile/Generic
-	$(call Image/Build/$(1),$(1),WBMR)
-	$(call Image/Build/$(1),$(1),DGN3500B)
-	$(call Image/BuildEVA/$(1),$(1),FRITZ7320)
-	$(call Image/Build/$(1),$(1),NONE)
-	$(CP) $(KDIR)/root.$(1) $(BIN_DIR)/$(IMG_PREFIX)-$(1).rootfs
+define Build/dgn3500-sercom-footer
+	$(STAGING_DIR_HOST)/bin/dgn3500sum $@ $(1) $(2)
 endef
+
+define Build/mkbrncmdline
+	mkbrncmdline -i $@ -o $@.new BRN-BOOT
+	mv $@.new $@
+endef
+
+define Build/mkbrnimg
+	mkbrnimg -s $(SIGNATURE) -m $(MAGIC) -p $(CRC32_POLY) -o $@ $(IMAGE_KERNEL) $(IMAGE_ROOTFS)
+endef
+
+define Build/fullimage
+	mkimage -A mips -O linux -C lzma -T filesystem -a 0x00  \
+		-e 0x00 -n '$(VERSION_DIST) RootFS' \
+		-d $(IMAGE_ROOTFS) $(IMAGE_ROOTFS).new
+
+	cat $(IMAGE_KERNEL) $(IMAGE_ROOTFS).new > $@.tmp
+
+	mkimage -A mips -O linux -T multi -a 0x00 -C none \
+		-e 0x00 -n 'OpenWrt fullimage' \
+		-d $@.tmp $@
+
+	rm $(IMAGE_ROOTFS).new
+	rm $@.tmp
+endef
+
+define Build/loader-common
+	rm -rf $@.src
+	$(MAKE) -C lzma-loader \
+		PKG_BUILD_DIR="$@.src" \
+		TARGET_DIR="$(dir $@)" LOADER_NAME="$(notdir $@)" \
+		BOARD="$(BOARDNAME)" PLATFORM="lantiq" \
+		LZMA_TEXT_START=0x82000000 \
+		LOADADDR=0x80002000 \
+		$(1) compile loader.bin
+	mv "$@.bin" "$@"
+	rm -rf $@.src
+endef
+
+define Build/loader-kernel
+	$(call Build/loader-common,LOADER_DATA="$@")
+endef
+
+define Build/loader-okli-compile
+	$(call Build/loader-common, \
+		FLASH_START=0x10000000 \
+		FLASH_OFFS=$(LOADER_FLASH_OFFS) \
+		FLASH_MAX=0x0 \
+	)
+endef
+
+define Build/prepend-loader-okli
+	cat "$(KDIR)/loader-$(word 1,$(1)).bin" "$@" >> "$@.new"
+	mv "$@.new" "$@"
+endef
+
+DEVICE_VARS += SIGNATURE MAGIC CRC32_POLY LOADER_FLASH_OFFS
+
+DTS_DIR := $(DTS_DIR)/lantiq
+
+# Shared device definition: applies to every defined device
+define Device/Default
+  PROFILES = Default
+  COMPILE :=
+  KERNEL_DEPENDS = $$(wildcard $(DTS_DIR)/$$(DEVICE_DTS).dts)
+  KERNEL_INITRAMFS_NAME = $$(KERNEL_NAME)-initramfs
+  KERNEL := kernel-bin | append-dtb | lzma | uImage lzma
+  KERNEL_INITRAMFS := kernel-bin | append-dtb | lzma | uImage lzma
+  FILESYSTEMS := squashfs
+  SOC := $(DEFAULT_SOC)
+  DEVICE_DTS = $$(SOC)_$(1)
+  IMAGES := sysupgrade.bin
+  IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | check-size | append-metadata
+endef
+
+define Device/NAND/xway
+  BLOCKSIZE := 16k
+  PAGESIZE := 512
+  SUBPAGESIZE := 256
+  FILESYSTEMS += ubifs
+endef
+
+define Device/NAND/xrx200
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  SUBPAGESIZE := 512
+  FILESYSTEMS += ubifs
+endef
+
+define Device/NAND
+  $(Device/NAND/$(SUBTARGET))
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+
+define Device/lantiqBrnImage
+  KERNEL := kernel-bin | append-dtb | mkbrncmdline | lzma-no-dict
+  IMAGES := factory.bin
+  IMAGE/factory.bin := mkbrnimg | check-size
+endef
+
+define Device/lantiqFullImage
+  KERNEL := kernel-bin | append-dtb | lzma | uImage lzma | pad-offset 4 0
+  IMAGES := sysupgrade.bin fullimage.bin
+  IMAGE/fullimage.bin := fullimage | check-size
+endef
+
+define Device/AVM
+  DEVICE_VENDOR := AVM
+  KERNEL := kernel-bin | append-dtb | lzma | eva-image
+  KERNEL_INITRAMFS := $$(KERNEL)
+  IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-avm-fakeroot | \
+	append-rootfs | pad-rootfs | check-size | append-metadata
+endef
+
+define Device/AVM_preloader
+  DEVICE_VENDOR := AVM
+  COMPILE := loader-$(1).bin
+  COMPILE/loader-$(1).bin := loader-okli-compile | lzma | eva-image | \
+	pad-to 64k | append-avm-fakeroot | pad-to 4k
+  KERNEL := kernel-bin | append-dtb | lzma | uImage lzma -M 0x4f4b4c49 | \
+	prepend-loader-okli $(1)
+  KERNEL_INITRAMFS := kernel-bin | append-dtb | lzma | eva-image
+endef
+
+ifeq ($(SUBTARGET),ase)
+DEFAULT_SOC := amazonse
+include amazonse.mk
 endif
 
-ifeq ($(CONFIG_TARGET_lantiq_falcon)$(CONFIG_TARGET_lantiq_falcon_stable),y)
-
-Image/BuildKernel/Profile/EASY98000=$(call Image/BuildKernel/Template,EASY98000,$(falcon_cmdline))
-Image/BuildKernel/Profile/EASY98020=$(call Image/BuildKernel/Template,EASY98020,$(falcon_cmdline))
-
-Image/Build/Profile/EASY98000=$(call Image/Build/$(1),$(1),EASY98000)
-Image/Build/Profile/EASY98020=$(call Image/Build/$(1),$(1),EASY98020)
-
-define Image/BuildKernel/Profile/Generic
-	$(call Image/BuildKernel/Template,EASY98000,$(falcon_cmdline))
-	$(call Image/BuildKernel/Template,EASY98020,$(falcon_cmdline))
-	$(call Image/BuildKernel/Template,NONE)
-endef
-
-define Image/Build/Profile/Generic
-	$(call Image/Build/$(1),$(1),EASY98000)
-	$(call Image/Build/$(1),$(1),EASY98020)
-	$(call Image/Build/$(1),$(1),NONE)
-	$(CP) $(KDIR)/root.$(1) $(BIN_DIR)/$(IMG_PREFIX)-$(1).rootfs
-endef
+ifeq ($(SUBTARGET),xway_legacy)
+DEFAULT_SOC := danube
+include xway_legacy.mk
 endif
 
-ifeq ($(CONFIG_TARGET_lantiq_ase),y)
-
-Image/BuildKernel/Profile/EASY50601=$(call Image/BuildKernel/Template,EASY50601,$(ase_cmdline))
-Image/Build/Profile/EASY50601=$(call Image/Build/$(1),$(1),EASY50601)
-
-define Image/BuildKernel/Profile/Generic
-	$(call Image/BuildKernel/Template,EASY50601,$(ase_cmdline))
-	$(call Image/BuildKernel/Template,NONE)
-endef
-
-define Image/Build/Profile/Generic
-	$(call Image/Build/$(1),$(1),EASY50601)
-	$(call Image/Build/$(1),$(1),NONE)
-	$(CP) $(KDIR)/root.$(1) $(BIN_DIR)/$(IMG_PREFIX)-$(1).rootfs
-endef
+ifeq ($(SUBTARGET),xway)
+include danube.mk
+include ar9.mk
 endif
 
-ifeq ($(CONFIG_TARGET_lantiq_vr9),y)
-define Image/BuildKernel/Profile/FRITZ3370
-	$(call Image/BuildKernel/Template,FRITZ3370,$(xway_cmdline))
-	$(call Image/BuildKernelEVA/Template,FRITZ3370,$(xway_cmdline))
-endef
-
-Image/Build/Profile/FRITZ3370=$(call Image/Build/$(1),$(1),FRITZ3370)
-
-define Image/BuildKernel/Profile/Generic
-	$(call Image/BuildKernel/Template,FRITZ3370,$(xway_cmdline))
-	$(call Image/BuildKernel/Template,NONE)
-endef
-
-define Image/Build/Profile/Generic
-	$(call Image/Build/$(1),$(1),FRITZ3370)
-	$(call Image/Build/$(1),$(1),NONE)
-	$(CP) $(KDIR)/root.$(1) $(BIN_DIR)/$(IMG_PREFIX)-$(1).rootfs
-endef
+ifeq ($(SUBTARGET),xrx200)
+DEFAULT_SOC := vr9
+include tp-link.mk
+include vr9.mk
 endif
 
-define Image/BuildKernel
-	$(call Image/BuildKernel/Profile/$(PROFILE))
-endef
-
-define Image/Build
-	$(call Image/Build/Profile/$(PROFILE),$(1))
-endef
+ifeq ($(SUBTARGET),falcon)
+DEFAULT_SOC := falcon
+include falcon.mk
+endif
 
 $(eval $(call BuildImage))

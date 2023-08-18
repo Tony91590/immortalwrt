@@ -12,7 +12,9 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
+#include <linux/device.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/delay.h>
 #include <linux/skbuff.h>
 #include <linux/rtl8366.h>
@@ -39,6 +41,12 @@
 
 /* Port Enable Control register */
 #define RTL8366S_PECR				0x0001
+
+/* Green Ethernet Feature (based on GPL_BELKIN_F5D8235-4_v1000 v1.01.24) */
+#define RTL8366S_GREEN_ETHERNET_CTRL_REG	0x000a
+#define RTL8366S_GREEN_ETHERNET_CTRL_MASK	0x0018
+#define RTL8366S_GREEN_ETHERNET_TX_BIT		(1 << 3)
+#define RTL8366S_GREEN_ETHERNET_RX_BIT		(1 << 4)
 
 /* Switch Security Control registers */
 #define RTL8366S_SSCR0				0x0002
@@ -67,6 +75,10 @@
 #define RTL8366S_PHY_PAGE_MASK			(0x7 << 5)
 #define RTL8366S_PHY_NO_OFFSET			9
 #define RTL8366S_PHY_NO_MASK			(0x1f << 9)
+
+/* Green Ethernet Feature for PHY ports */
+#define RTL8366S_PHY_POWER_SAVING_CTRL_REG	12
+#define RTL8366S_PHY_POWER_SAVING_MASK		0x1000
 
 /* LED control registers */
 #define RTL8366S_LED_BLINKRATE_REG		0x0420
@@ -169,6 +181,9 @@
 #define RTL8366S_VLAN_FID_SHIFT		12
 #define RTL8366S_VLAN_FID_MASK		0x7
 
+#define RTL8366S_MIB_RXB_ID		0	/* IfInOctets */
+#define RTL8366S_MIB_TXB_ID		20	/* IfOutOctets */
+
 static struct rtl8366_mib_counter rtl8366s_mib_counters[] = {
 	{ 0,  0, 4, "IfInOctets"				},
 	{ 0,  4, 4, "EtherStatsOctets"				},
@@ -248,43 +263,6 @@ static int rtl8366s_reset_chip(struct rtl8366_smi *smi)
 	return 0;
 }
 
-static int rtl8366s_setup(struct rtl8366_smi *smi)
-{
-	struct rtl8366_platform_data *pdata;
-	int err;
-
-	pdata = smi->parent->platform_data;
-	if (pdata->num_initvals && pdata->initvals) {
-		unsigned i;
-
-		dev_info(smi->parent, "applying initvals\n");
-		for (i = 0; i < pdata->num_initvals; i++)
-			REG_WR(smi, pdata->initvals[i].reg,
-			       pdata->initvals[i].val);
-	}
-
-	/* set maximum packet length to 1536 bytes */
-	REG_RMW(smi, RTL8366S_SGCR, RTL8366S_SGCR_MAX_LENGTH_MASK,
-		RTL8366S_SGCR_MAX_LENGTH_1536);
-
-	/* enable learning for all ports */
-	REG_WR(smi, RTL8366S_SSCR0, 0);
-
-	/* enable auto ageing for all ports */
-	REG_WR(smi, RTL8366S_SSCR1, 0);
-
-	/*
-	 * discard VLAN tagged packets if the port is not a member of
-	 * the VLAN with which the packets is associated.
-	 */
-	REG_WR(smi, RTL8366S_VLAN_MEMBERINGRESS_REG, RTL8366S_PORT_ALL);
-
-	/* don't drop packets whose DA has not been learned */
-	REG_RMW(smi, RTL8366S_SSCR2, RTL8366S_SSCR2_DROP_UNKNOWN_DA, 0);
-
-	return 0;
-}
-
 static int rtl8366s_read_phy_reg(struct rtl8366_smi *smi,
 				 u32 phy_no, u32 page, u32 addr, u32 *data)
 {
@@ -347,6 +325,126 @@ static int rtl8366s_write_phy_reg(struct rtl8366_smi *smi,
 	ret = rtl8366_smi_write_reg(smi, reg, data);
 	if (ret)
 		return ret;
+
+	return 0;
+}
+
+static int rtl8366s_set_green_port(struct rtl8366_smi *smi, int port, int enable)
+{
+	int err;
+	u32 phyData;
+
+	if (port >= RTL8366S_NUM_PORTS)
+		return -EINVAL;
+
+	err = rtl8366s_read_phy_reg(smi, port, 0, RTL8366S_PHY_POWER_SAVING_CTRL_REG, &phyData);
+	if (err)
+		return err;
+
+	if (enable)
+		phyData |= RTL8366S_PHY_POWER_SAVING_MASK;
+	else
+		phyData &= ~RTL8366S_PHY_POWER_SAVING_MASK;
+
+	err = rtl8366s_write_phy_reg(smi, port, 0, RTL8366S_PHY_POWER_SAVING_CTRL_REG, phyData);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static int rtl8366s_set_green(struct rtl8366_smi *smi, int enable)
+{
+	int err;
+	unsigned i;
+	u32 data = 0;
+
+	if (!enable) {
+		for (i = 0; i <= RTL8366S_PHY_NO_MAX; i++) {
+			rtl8366s_set_green_port(smi, i, 0);
+		}
+	}
+
+	if (enable)
+		data = (RTL8366S_GREEN_ETHERNET_TX_BIT | RTL8366S_GREEN_ETHERNET_RX_BIT);
+
+	REG_RMW(smi, RTL8366S_GREEN_ETHERNET_CTRL_REG, RTL8366S_GREEN_ETHERNET_CTRL_MASK, data);
+
+	return 0;
+}
+
+static int rtl8366s_setup(struct rtl8366_smi *smi)
+{
+	struct rtl8366_platform_data *pdata;
+	int err;
+	unsigned i;
+#ifdef CONFIG_OF
+	struct device_node *np;
+	unsigned num_initvals;
+	const __be32 *paddr;
+#endif
+
+	pdata = smi->parent->platform_data;
+	if (pdata && pdata->num_initvals && pdata->initvals) {
+		dev_info(smi->parent, "applying initvals\n");
+		for (i = 0; i < pdata->num_initvals; i++)
+			REG_WR(smi, pdata->initvals[i].reg,
+			       pdata->initvals[i].val);
+	}
+
+#ifdef CONFIG_OF
+	np = smi->parent->of_node;
+
+	paddr = of_get_property(np, "realtek,initvals", &num_initvals);
+	if (paddr) {
+		dev_info(smi->parent, "applying initvals from DTS\n");
+
+		if (num_initvals < (2 * sizeof(*paddr)))
+			return -EINVAL;
+
+		num_initvals /= sizeof(*paddr);
+
+		for (i = 0; i < num_initvals - 1; i += 2) {
+			u32 reg = be32_to_cpup(paddr + i);
+			u32 val = be32_to_cpup(paddr + i + 1);
+
+			REG_WR(smi, reg, val);
+		}
+	}
+
+	if (of_property_read_bool(np, "realtek,green-ethernet-features")) {
+		dev_info(smi->parent, "activating Green Ethernet features\n");
+
+		err = rtl8366s_set_green(smi, 1);
+		if (err)
+			return err;
+
+		for (i = 0; i <= RTL8366S_PHY_NO_MAX; i++) {
+			err = rtl8366s_set_green_port(smi, i, 1);
+			if (err)
+				return err;
+		}
+	}
+#endif
+
+	/* set maximum packet length to 1536 bytes */
+	REG_RMW(smi, RTL8366S_SGCR, RTL8366S_SGCR_MAX_LENGTH_MASK,
+		RTL8366S_SGCR_MAX_LENGTH_1536);
+
+	/* enable learning for all ports */
+	REG_WR(smi, RTL8366S_SSCR0, 0);
+
+	/* enable auto ageing for all ports */
+	REG_WR(smi, RTL8366S_SSCR1, 0);
+
+	/*
+	 * discard VLAN tagged packets if the port is not a member of
+	 * the VLAN with which the packets is associated.
+	 */
+	REG_WR(smi, RTL8366S_VLAN_MEMBERINGRESS_REG, RTL8366S_PORT_ALL);
+
+	/* don't drop packets whose DA has not been learned */
+	REG_RMW(smi, RTL8366S_SSCR2, RTL8366S_SSCR2_DROP_UNKNOWN_DA, 0);
 
 	return 0;
 }
@@ -732,6 +830,32 @@ static int rtl8366s_sw_set_learning_enable(struct switch_dev *dev,
 	return 0;
 }
 
+static int rtl8366s_sw_get_green(struct switch_dev *dev,
+			      const struct switch_attr *attr,
+			      struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	u32 data;
+	int err;
+
+	err = rtl8366_smi_read_reg(smi, RTL8366S_GREEN_ETHERNET_CTRL_REG, &data);
+	if (err)
+		return err;
+
+	val->value.i = ((data & (RTL8366S_GREEN_ETHERNET_TX_BIT | RTL8366S_GREEN_ETHERNET_RX_BIT)) != 0) ? 1 : 0;
+
+	return 0;
+}
+
+static int rtl8366s_sw_set_green(struct switch_dev *dev,
+				 const struct switch_attr *attr,
+				 struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+
+	return rtl8366s_set_green(smi, val->value.i);
+}
+
 static int rtl8366s_sw_get_port_link(struct switch_dev *dev,
 				     int port,
 				     struct switch_port_link *link)
@@ -819,6 +943,34 @@ static int rtl8366s_sw_get_port_led(struct switch_dev *dev,
 	return 0;
 }
 
+static int rtl8366s_sw_get_green_port(struct switch_dev *dev,
+				      const struct switch_attr *attr,
+				      struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	int err;
+	u32 phyData;
+
+	if (val->port_vlan >= RTL8366S_NUM_PORTS)
+		return -EINVAL;
+
+	err = rtl8366s_read_phy_reg(smi, val->port_vlan, 0, RTL8366S_PHY_POWER_SAVING_CTRL_REG, &phyData);
+	if (err)
+		return err;
+
+	val->value.i = ((phyData & RTL8366S_PHY_POWER_SAVING_MASK) != 0) ? 1 : 0;
+
+	return 0;
+}
+
+static int rtl8366s_sw_set_green_port(struct switch_dev *dev,
+				      const struct switch_attr *attr,
+				      struct switch_val *val)
+{
+	struct rtl8366_smi *smi = sw_to_rtl8366_smi(dev);
+	return rtl8366s_set_green_port(smi, val->port_vlan, val->value.i);
+}
+
 static int rtl8366s_sw_reset_port_mibs(struct switch_dev *dev,
 				       const struct switch_attr *attr,
 				       struct switch_val *val)
@@ -831,6 +983,13 @@ static int rtl8366s_sw_reset_port_mibs(struct switch_dev *dev,
 
 	return rtl8366_smi_rmwr(smi, RTL8366S_MIB_CTRL_REG,
 				0, (1 << (val->port_vlan + 3)));
+}
+
+static int rtl8366s_sw_get_port_stats(struct switch_dev *dev, int port,
+                                        struct switch_port_stats *stats)
+{
+	return (rtl8366_sw_get_port_stats(dev, port, stats,
+				RTL8366S_MIB_TXB_ID, RTL8366S_MIB_RXB_ID));
 }
 
 static struct switch_attr rtl8366s_globals[] = {
@@ -878,6 +1037,13 @@ static struct switch_attr rtl8366s_globals[] = {
 		.set = rtl8366s_sw_set_max_length,
 		.get = rtl8366s_sw_get_max_length,
 		.max = 3,
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "green_mode",
+		.description = "Get/Set the router green feature",
+		.set = rtl8366s_sw_set_green,
+		.get = rtl8366s_sw_get_green,
+		.max = 1,
 	},
 };
 
@@ -901,6 +1067,13 @@ static struct switch_attr rtl8366s_port[] = {
 		.max = 15,
 		.set = rtl8366s_sw_set_port_led,
 		.get = rtl8366s_sw_get_port_led,
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "green_port",
+		.description = "Get/Set port green feature (0 - 1)",
+		.max = 1,
+		.set = rtl8366s_sw_set_green_port,
+		.get = rtl8366s_sw_get_green_port,
 	},
 };
 
@@ -942,6 +1115,7 @@ static const struct switch_dev_ops rtl8366_ops = {
 	.set_port_pvid = rtl8366_sw_set_port_pvid,
 	.reset_switch = rtl8366_sw_reset_switch,
 	.get_port_link = rtl8366s_sw_get_port_link,
+	.get_port_stats = rtl8366s_sw_get_port_stats,
 };
 
 static int rtl8366s_switch_init(struct rtl8366_smi *smi)
@@ -1048,10 +1222,9 @@ static struct rtl8366_smi_ops rtl8366s_smi_ops = {
 	.enable_port	= rtl8366s_enable_port,
 };
 
-static int __devinit rtl8366s_probe(struct platform_device *pdev)
+static int rtl8366s_probe(struct platform_device *pdev)
 {
 	static int rtl8366_smi_version_printed;
-	struct rtl8366_platform_data *pdata;
 	struct rtl8366_smi *smi;
 	int err;
 
@@ -1059,21 +1232,10 @@ static int __devinit rtl8366s_probe(struct platform_device *pdev)
 		printk(KERN_NOTICE RTL8366S_DRIVER_DESC
 		       " version " RTL8366S_DRIVER_VER"\n");
 
-	pdata = pdev->dev.platform_data;
-	if (!pdata) {
-		dev_err(&pdev->dev, "no platform data specified\n");
-		err = -EINVAL;
-		goto err_out;
-	}
+	smi = rtl8366_smi_probe(pdev);
+	if (IS_ERR(smi))
+		return PTR_ERR(smi);
 
-	smi = rtl8366_smi_alloc(&pdev->dev);
-	if (!smi) {
-		err = -ENOMEM;
-		goto err_out;
-	}
-
-	smi->gpio_sda = pdata->gpio_sda;
-	smi->gpio_sck = pdata->gpio_sck;
 	smi->clk_delay = 10;
 	smi->cmd_read = 0xa9;
 	smi->cmd_write = 0xa8;
@@ -1101,11 +1263,10 @@ static int __devinit rtl8366s_probe(struct platform_device *pdev)
 	rtl8366_smi_cleanup(smi);
  err_free_smi:
 	kfree(smi);
- err_out:
 	return err;
 }
 
-static int __devexit rtl8366s_remove(struct platform_device *pdev)
+static int rtl8366s_remove(struct platform_device *pdev)
 {
 	struct rtl8366_smi *smi = platform_get_drvdata(pdev);
 
@@ -1119,13 +1280,24 @@ static int __devexit rtl8366s_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id rtl8366s_match[] = {
+	{ .compatible = "realtek,rtl8366s" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, rtl8366s_match);
+#endif
+
 static struct platform_driver rtl8366s_driver = {
 	.driver = {
 		.name		= RTL8366S_DRIVER_NAME,
 		.owner		= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = of_match_ptr(rtl8366s_match),
+#endif
 	},
 	.probe		= rtl8366s_probe,
-	.remove		= __devexit_p(rtl8366s_remove),
+	.remove		= rtl8366s_remove,
 };
 
 static int __init rtl8366s_module_init(void)

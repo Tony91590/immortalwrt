@@ -11,7 +11,9 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
+#include <linux/device.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/delay.h>
 #include <linux/skbuff.h>
 #include <linux/rtl8367.h>
@@ -250,6 +252,9 @@ struct rtl8367_initval {
 	u16 reg;
 	u16 val;
 };
+
+#define RTL8367_MIB_RXB_ID		0	/* IfInOctets */
+#define RTL8367_MIB_TXB_ID		20	/* IfOutOctets */
 
 static struct rtl8366_mib_counter rtl8367_mib_counters[] = {
 	{ 0,  0, 4, "IfInOctets"				},
@@ -1071,6 +1076,51 @@ static int rtl8367_led_blinkrate_set(struct rtl8366_smi *smi, unsigned int rate)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static int rtl8367_extif_init_of(struct rtl8366_smi *smi, int id,
+				 const char *name)
+{
+	struct rtl8367_extif_config *cfg;
+	const __be32 *prop;
+	int size;
+	int err;
+
+	prop = of_get_property(smi->parent->of_node, name, &size);
+	if (!prop)
+		return rtl8367_extif_init(smi, id, NULL);
+
+	if (size != (9 * sizeof(*prop))) {
+		dev_err(smi->parent, "%s property is invalid\n", name);
+		return -EINVAL;
+	}
+
+	cfg = kzalloc(sizeof(struct rtl8367_extif_config), GFP_KERNEL);
+	if (!cfg)
+		return -ENOMEM;
+
+	cfg->txdelay = be32_to_cpup(prop++);
+	cfg->rxdelay = be32_to_cpup(prop++);
+	cfg->mode = be32_to_cpup(prop++);
+	cfg->ability.force_mode = be32_to_cpup(prop++);
+	cfg->ability.txpause = be32_to_cpup(prop++);
+	cfg->ability.rxpause = be32_to_cpup(prop++);
+	cfg->ability.link = be32_to_cpup(prop++);
+	cfg->ability.duplex = be32_to_cpup(prop++);
+	cfg->ability.speed = be32_to_cpup(prop++);
+
+	err = rtl8367_extif_init(smi, id, cfg);
+	kfree(cfg);
+
+	return err;
+}
+#else
+static int rtl8367_extif_init_of(struct rtl8366_smi *smi, int id,
+				 const char *name)
+{
+	return -EINVAL;
+}
+#endif
+
 static int rtl8367_setup(struct rtl8366_smi *smi)
 {
 	struct rtl8367_platform_data *pdata;
@@ -1084,13 +1134,23 @@ static int rtl8367_setup(struct rtl8366_smi *smi)
 		return err;
 
 	/* initialize external interfaces */
-	err = rtl8367_extif_init(smi, 0, pdata->extif0_cfg);
-	if (err)
-		return err;
+	if (smi->parent->of_node) {
+		err = rtl8367_extif_init_of(smi, 0, "realtek,extif0");
+		if (err)
+			return err;
 
-	err = rtl8367_extif_init(smi, 1, pdata->extif1_cfg);
-	if (err)
-		return err;
+		err = rtl8367_extif_init_of(smi, 1, "realtek,extif1");
+		if (err)
+			return err;
+	} else {
+		err = rtl8367_extif_init(smi, 0, pdata->extif0_cfg);
+		if (err)
+			return err;
+
+		err = rtl8367_extif_init(smi, 1, pdata->extif1_cfg);
+		if (err)
+			return err;
+	}
 
 	/* set maximum packet length to 1536 bytes */
 	REG_RMW(smi, RTL8367_SWC0_REG, RTL8367_SWC0_MAX_LENGTH_MASK,
@@ -1350,6 +1410,9 @@ static int rtl8367_is_vlan_valid(struct rtl8366_smi *smi, unsigned vlan)
 {
 	unsigned max = RTL8367_NUM_VLANS;
 
+	if (smi->vlan4k_enabled)
+		max = RTL8367_NUM_VIDS - 1;
+
 	if (vlan == 0 || vlan >= max)
 		return 0;
 
@@ -1475,6 +1538,13 @@ static int rtl8367_sw_reset_port_mibs(struct switch_dev *dev,
 				RTL8367_MIB_CTRL_PORT_RESET_MASK(port % 8));
 }
 
+static int rtl8367_sw_get_port_stats(struct switch_dev *dev, int port,
+                                        struct switch_port_stats *stats)
+{
+	return (rtl8366_sw_get_port_stats(dev, port, stats,
+				RTL8367_MIB_TXB_ID, RTL8367_MIB_RXB_ID));
+}
+
 static struct switch_attr rtl8367_globals[] = {
 	{
 		.type = SWITCH_TYPE_INT,
@@ -1532,10 +1602,17 @@ static struct switch_attr rtl8367_vlan[] = {
 		.max = 1,
 		.set = NULL,
 		.get = rtl8366_sw_get_vlan_info,
+	}, {
+		.type = SWITCH_TYPE_INT,
+		.name = "fid",
+		.description = "Get/Set vlan FID",
+		.max = RTL8367_FIDMAX,
+		.set = rtl8366_sw_set_vlan_fid,
+		.get = rtl8366_sw_get_vlan_fid,
 	},
 };
 
-static const struct switch_dev_ops rtl8366m_ops = {
+static const struct switch_dev_ops rtl8367_sw_ops = {
 	.attr_global = {
 		.attr = rtl8367_globals,
 		.n_attr = ARRAY_SIZE(rtl8367_globals),
@@ -1555,6 +1632,7 @@ static const struct switch_dev_ops rtl8366m_ops = {
 	.set_port_pvid = rtl8366_sw_set_port_pvid,
 	.reset_switch = rtl8366_sw_reset_switch,
 	.get_port_link = rtl8367_sw_get_port_link,
+	.get_port_stats = rtl8367_sw_get_port_stats,
 };
 
 static int rtl8367_switch_init(struct rtl8366_smi *smi)
@@ -1566,7 +1644,7 @@ static int rtl8367_switch_init(struct rtl8366_smi *smi)
 	dev->cpu_port = RTL8367_CPU_PORT_NUM;
 	dev->ports = RTL8367_NUM_PORTS;
 	dev->vlans = RTL8367_NUM_VIDS;
-	dev->ops = &rtl8366m_ops;
+	dev->ops = &rtl8367_sw_ops;
 	dev->alias = dev_name(smi->parent);
 
 	err = register_switch(dev, NULL);
@@ -1668,27 +1746,15 @@ static struct rtl8366_smi_ops rtl8367_smi_ops = {
 	.enable_port	= rtl8367_enable_port,
 };
 
-static int __devinit rtl8367_probe(struct platform_device *pdev)
+static int rtl8367_probe(struct platform_device *pdev)
 {
-	struct rtl8367_platform_data *pdata;
 	struct rtl8366_smi *smi;
 	int err;
 
-	pdata = pdev->dev.platform_data;
-	if (!pdata) {
-		dev_err(&pdev->dev, "no platform data specified\n");
-		err = -EINVAL;
-		goto err_out;
-	}
+	smi = rtl8366_smi_probe(pdev);
+	if (IS_ERR(smi))
+		return PTR_ERR(smi);
 
-	smi = rtl8366_smi_alloc(&pdev->dev);
-	if (!smi) {
-		err = -ENOMEM;
-		goto err_out;
-	}
-
-	smi->gpio_sda = pdata->gpio_sda;
-	smi->gpio_sck = pdata->gpio_sck;
 	smi->clk_delay = 1500;
 	smi->cmd_read = 0xb9;
 	smi->cmd_write = 0xb8;
@@ -1716,11 +1782,10 @@ static int __devinit rtl8367_probe(struct platform_device *pdev)
 	rtl8366_smi_cleanup(smi);
  err_free_smi:
 	kfree(smi);
- err_out:
 	return err;
 }
 
-static int __devexit rtl8367_remove(struct platform_device *pdev)
+static int rtl8367_remove(struct platform_device *pdev)
 {
 	struct rtl8366_smi *smi = platform_get_drvdata(pdev);
 
@@ -1742,13 +1807,24 @@ static void rtl8367_shutdown(struct platform_device *pdev)
 		rtl8367_reset_chip(smi);
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id rtl8367_match[] = {
+       { .compatible = "realtek,rtl8367" },
+       {},
+};
+MODULE_DEVICE_TABLE(of, rtl8367_match);
+#endif
+
 static struct platform_driver rtl8367_driver = {
 	.driver = {
 		.name		= RTL8367_DRIVER_NAME,
 		.owner		= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = of_match_ptr(rtl8367_match),
+#endif
 	},
 	.probe		= rtl8367_probe,
-	.remove		= __devexit_p(rtl8367_remove),
+	.remove		= rtl8367_remove,
 	.shutdown	= rtl8367_shutdown,
 };
 
@@ -1764,7 +1840,7 @@ static void __exit rtl8367_module_exit(void)
 }
 module_exit(rtl8367_module_exit);
 
-MODULE_DESCRIPTION(RTL8367_DRIVER_DESC);
+MODULE_DESCRIPTION("Realtek RTL8367 ethernet switch driver");
 MODULE_AUTHOR("Gabor Juhos <juhosg@openwrt.org>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" RTL8367_DRIVER_NAME);

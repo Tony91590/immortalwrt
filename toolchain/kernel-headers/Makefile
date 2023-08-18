@@ -17,12 +17,29 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=linux
 PKG_VERSION:=$(LINUX_VERSION)
 PKG_SOURCE:=$(LINUX_SOURCE)
-PKG_SOURCE_URL:=$(LINUX_SITE)
+ifneq ($(call qstrip,$(CONFIG_KERNEL_GIT_CLONE_URI)),)
+  PKG_SOURCE_PROTO:=git
+  PKG_SOURCE_URL:=$(call qstrip,$(CONFIG_KERNEL_GIT_CLONE_URI))
+  PKG_SOURCE_VERSION:=$(call qstrip,$(CONFIG_KERNEL_GIT_REF))
+  PKG_MIRROR_HASH:=$(call qstrip,$(CONFIG_KERNEL_GIT_MIRROR_HASH))
+ifdef CHECK
+  PLATFORM_DIR:=$(firstword $(wildcard $(TOPDIR)/target/linux/feeds/$(BOARD) $(TOPDIR)/target/linux/$(BOARD)))
+  include $(PLATFORM_DIR)/Makefile
+  include $(INCLUDE_DIR)/kernel-version.mk
+  include $(INCLUDE_DIR)/kernel-build.mk
+  PKG_VERSION:=$(LINUX_VERSION)
+else
+  PKG_SOURCE:=$(LINUX_SOURCE)
+endif
+else
+  PKG_SOURCE:=$(LINUX_SOURCE)
+  PKG_SOURCE_URL:=$(LINUX_SITE)
+endif
 HOST_BUILD_DIR:=$(KERNEL_BUILD_DIR)/linux-$(LINUX_VERSION)
-PKG_MD5SUM:=$(LINUX_KERNEL_MD5SUM)
+PKG_HASH:=$(LINUX_KERNEL_HASH)
 LINUX_DIR := $(HOST_BUILD_DIR)
 FILES_DIR := 
-PATCH_DIR := ./patches$(if $(wildcard ./patches-$(KERNEL_PATCHVER)),-$(KERNEL_PATCHVER))
+PATCH_DIR := ./patches$(if $(wildcard ./patches-$(LINUX_VERSION)),-$(LINUX_VERSION))
 
 include $(INCLUDE_DIR)/toolchain-build.mk
 include $(INCLUDE_DIR)/kernel-defaults.mk
@@ -35,17 +52,14 @@ HOST_EXTRACFLAGS=
 
 LINUX_HAS_HEADERS_INSTALL:=y
 
-KMAKE := $(MAKE) -C $(HOST_BUILD_DIR) \
-	ARCH=$(LINUX_KARCH) \
+HOST_KMAKE := $(MAKE) -C $(HOST_BUILD_DIR) \
+	$(KERNEL_MAKE_FLAGS) \
 	CC="$(KERNEL_CC)" \
-	CFLAGS="$(TARGET_CFLAGS)" \
-	CROSS_COMPILE=$(TARGET_CROSS) \
-	KBUILD_HAVE_NLS=no \
-	CONFIG_SHELL=$(BASH)
+	HOSTCFLAGS="$(HOST_CFLAGS)"
 
 define Host/Configure/all
 	mkdir -p $(BUILD_DIR_TOOLCHAIN)/linux-dev
-	$(KMAKE) \
+	$(HOST_KMAKE) \
 		INSTALL_HDR_PATH="$(BUILD_DIR_TOOLCHAIN)/linux-dev/" \
 		headers_install
 endef
@@ -56,27 +70,11 @@ ifneq ($(CONFIG_mips)$(CONFIG_mipsel),)
 	$(CP) \
 		$(HOST_BUILD_DIR)/arch/mips/include/asm/asm.h \
 		$(HOST_BUILD_DIR)/arch/mips/include/asm/regdef.h \
+		$(HOST_BUILD_DIR)/arch/mips/include/asm/asm-eva.h \
+		$(HOST_BUILD_DIR)/arch/mips/include/asm/isa-rev.h \
 		$(BUILD_DIR_TOOLCHAIN)/linux-dev/include/asm/
   endef
 endif
-
-define Host/Configure/post/cris
-	$(CP) \
-		$(HOST_BUILD_DIR)/include/linux/user.h \
-		$(BUILD_DIR_TOOLCHAIN)/linux-dev/include/linux/
-	ln -snf $(BUILD_DIR_TOOLCHAIN)/linux-dev/include/arch-v10/arch \
-		$(BUILD_DIR_TOOLCHAIN)/linux-dev/include/arch
-	$(SED) '/#include <asm\/page\.h>/d' $(BUILD_DIR_TOOLCHAIN)/linux-dev/include/asm/user.h
-endef
-
-define Host/Configure/post/ubicom32
-	$(CP) \
-		$(HOST_BUILD_DIR)/arch/ubicom32/include/asm/elf.h \
-		$(HOST_BUILD_DIR)/arch/ubicom32/include/asm/user.h \
-		$(HOST_BUILD_DIR)/arch/ubicom32/include/asm/page.h \
-		$(HOST_BUILD_DIR)/arch/ubicom32/include/asm/page_offset.h \
-		$(BUILD_DIR_TOOLCHAIN)/linux-dev/include/asm/
-endef
 
 define Host/Configure/post/mips
 	$(call Host/Configure/lzma)
@@ -87,14 +85,15 @@ define Host/Configure/post/mipsel
 endef
 
 define Host/Prepare
+	rm -rf $(BUILD_DIR_TOOLCHAIN)/linux-*
 	$(call Kernel/Prepare/Default)
-	ln -sf linux-$(LINUX_VERSION) $(BUILD_DIR_TOOLCHAIN)/linux
+	rm -f $(BUILD_DIR_TOOLCHAIN)/linux
+	ln -s linux-$(LINUX_VERSION) $(BUILD_DIR_TOOLCHAIN)/linux
 	$(SED) 's/@expr length/@-expr length/' $(HOST_BUILD_DIR)/Makefile
 endef
 
 define Host/Configure
-	env
-	yes '' | $(KMAKE) oldconfig
+	yes '' | $(HOST_KMAKE) oldconfig
 	$(call Host/Configure/all)
 	$(call Host/Configure/post/$(ARCH))
 endef

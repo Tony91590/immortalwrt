@@ -1,25 +1,21 @@
-# 
-# Copyright (C) 2006-2010 OpenWrt.org
+# SPDX-License-Identifier: GPL-2.0-only
 #
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2006-2013 OpenWrt.org
+
 include $(TOPDIR)/rules.mk
 
 ARCH:=arm
 BOARD:=at91
-MAINTAINER:=Claudio Mignanti <c.mignanti@gmail.com>
-BOARDNAME:=Atmel AT91
-FEATURES:=squashfs jffs2 targz ext2 usb
-CFLAGS:=-Os -pipe -march=armv5te -mtune=arm926ej-s -fno-caller-saves
-SUBTARGETS:=9g20 9260 9263
+BOARDNAME:=Microchip (Atmel AT91)
+FEATURES:=ext4 squashfs targz usbgadget ubifs
+SUBTARGETS:=sama7 sama5 sam9x
 
-LINUX_VERSION:=3.3.5
-DEVICE_TYPE=
+KERNEL_PATCHVER:=5.15
 
 include $(INCLUDE_DIR)/target.mk
 
-DEFAULT_PACKAGES+= kmod-usb-ohci
-KERNELNAME:="uImage"
+KERNELNAME:=zImage dtbs
+
+DEFAULT_PACKAGES += kmod-usb-ohci kmod-at91-udc kmod-usb-gadget-eth
 
 $(eval $(call BuildTarget))

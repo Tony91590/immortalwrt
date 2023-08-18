@@ -1,20 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright (C) 2007-2011 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+
 include $(TOPDIR)/rules.mk
 
-ARCH:=mips
 BOARD:=lantiq
-BOARDNAME:=Lantiq GPON/XWAY
-FEATURES:=squashfs jffs2
-DEFAULT_SUBTARGET:=danube
+BOARDNAME:=Lantiq
+FEATURES:=squashfs
+SUBTARGETS:=xrx200 xway xway_legacy falcon ase
 
-LINUX_VERSION:=3.2.16
-
-CFLAGS=-Os -pipe -mips32r2 -mtune=mips32r2 -fno-caller-saves
+KERNEL_PATCHVER:=5.15
 
 define Target/Description
 	Build firmware images for Lantiq SoC

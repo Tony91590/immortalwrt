@@ -5,16 +5,21 @@
 #include <byteswap.h>
 #include_next <endian.h>
 #elif defined(__APPLE__)
-#include <machine/endian.h>
-#include <machine/byte_order.h>
-#define bswap_16(x) NXSwapShort(x)
-#define bswap_32(x) NXSwapInt(x)
-#define bswap_64(x) NXSwapLongLong(x)
+#include <netinet/in.h>
+#include <libkern/OSByteOrder.h>
+#define bswap_16(x) OSSwapInt16(x)
+#define bswap_32(x) OSSwapInt32(x)
+#define bswap_64(x) OSSwapInt64(x)
 #elif defined(__FreeBSD__)
 #include <sys/endian.h>
 #define bswap_16(x) bswap16(x)
 #define bswap_32(x) bswap32(x)
 #define bswap_64(x) bswap64(x)
+#elif defined(__OpenBSD__)
+#include <sys/types.h>
+#define bswap_16(x) __swap16(x)
+#define bswap_32(x) __swap32(x)
+#define bswap_64(x) __swap64(x)
 #else
 #include <machine/endian.h>
 #define bswap_16(x) swap16(x)

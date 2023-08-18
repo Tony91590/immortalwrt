@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2006-2012 OpenWrt.org
+# Copyright (C) 2006-2016 OpenWrt.org
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -7,12 +7,51 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=cmake
-PKG_VERSION:=2.8.7
+PKG_VERSION:=3.27.1
+PKG_VERSION_MAJOR:=$(word 1,$(subst ., ,$(PKG_VERSION))).$(word 2,$(subst ., ,$(PKG_VERSION)))
+PKG_RELEASE:=1
+PKG_CPE_ID:=cpe:/a:kitware:cmake
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=http://www.cmake.org/files/v2.8/
-PKG_MD5SUM:=e1b237aeaed880f65dec9c20602452f6
+PKG_SOURCE_URL:=https://github.com/Kitware/CMake/releases/download/v$(PKG_VERSION)/ \
+		https://cmake.org/files/v$(PKG_VERSION_MAJOR)/
+PKG_HASH:=b1a6b0135fa11b94476e90f5b32c4c8fad480bf91cf22d0ded98ce22c5132004
+
+HOST_BUILD_PARALLEL:=1
+HOST_CONFIGURE_PARALLEL:=1
 
 include $(INCLUDE_DIR)/host-build.mk
+
+HOST_CONFIGURE_VARS += \
+	CC="$(HOSTCC_NOCACHE)" \
+	CXX="$(HOSTCXX_NOCACHE)" \
+	MAKEFLAGS="$(HOST_JOBS)" \
+	CXXFLAGS="$(HOST_CFLAGS)" \
+	MAKE="$(STAGING_DIR_HOST)/bin/ninja"
+
+HOST_CONFIGURE_ARGS := \
+	$(if $(MAKE_JOBSERVER),--parallel="$(MAKE_JOBSERVER)") \
+	--prefix="$(STAGING_DIR_HOST)" \
+	--system-expat \
+	--system-liblzma \
+	--system-zlib \
+	--system-zstd \
+	--generator=Ninja
+
+define Host/Compile/Default
+	+$(NINJA) -C $(HOST_BUILD_DIR) $(1)
+endef
+
+define Host/Install/Default
+	+$(NINJA) -C $(HOST_BUILD_DIR) install
+endef
+
+define Host/Uninstall/Default
+	+$(NINJA) -C $(HOST_BUILD_DIR) uninstall
+endef
+
+ifneq ($(findstring c,$(OPENWRT_VERBOSE)),)
+  HOST_MAKE_FLAGS += VERBOSE=1
+endif
 
 $(eval $(call HostBuild))

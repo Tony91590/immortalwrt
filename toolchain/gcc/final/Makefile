@@ -7,20 +7,17 @@ GCC_CONFIGURE += \
 	--enable-languages=$(TARGET_LANGUAGES) \
 	--enable-shared \
 	--enable-threads \
-	--with-slibdir=$(TOOLCHAIN_DIR)/lib
-
-ifneq ($(CONFIG_GCC_VERSION_4_5)$(CONFIG_GCC_VERSION_4_6),)
-  GCC_CONFIGURE += \
+	--with-slibdir=$(TOOLCHAIN_DIR)/lib \
+	--enable-plugins \
 	--enable-lto \
-	--with-libelf=$(TOPDIR)/staging_dir/host
+	--with-libelf=$(STAGING_DIR_HOST)
+
+ifndef CONFIG_USE_GLIBC
+  GCC_CONFIGURE += --disable-libsanitizer
 endif
 
-ifneq ($(CONFIG_TLS_SUPPORT),)
-  GCC_CONFIGURE += \
-	--enable-tls
-else
-  GCC_CONFIGURE += \
-	--disable-tls
+ifdef CONFIG_USE_MUSL
+  GCC_MAKE += gcc_cv_libc_provides_ssp=yes
 endif
 
 ifneq ($(CONFIG_SJLJ_EXCEPTIONS),)
@@ -28,21 +25,35 @@ ifneq ($(CONFIG_SJLJ_EXCEPTIONS),)
 	--enable-sjlj-exceptions
 endif
 
-define Host/Configure
-	mkdir -p $(GCC_BUILD_DIR) $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)
+define CleanupToolchain
+	$(INSTALL_DIR) $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)
 	# Important!  Required for limits.h to be fixed.
 	rm -rf $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)/sys-include
 	ln -sf ../include $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)/sys-include
 	rm -rf $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)/lib
 	ln -sf ../lib $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)/lib
-	$(if $(CONFIG_mips64)$(CONFIG_mips64el)$(CONFIG_x86_64),ln -sf ../lib64 $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)/lib64)
+	$(if $(CONFIG_ARCH_64BIT),ln -sf ../lib64 $(TOOLCHAIN_DIR)/$(REAL_GNU_TARGET_NAME)/lib64)
+endef
+
+define Host/Configure
+	$(CleanupToolchain)
+	mkdir -p $(GCC_BUILD_DIR)
 	(cd $(GCC_BUILD_DIR) && rm -f config.cache; \
 		$(GCC_CONFIGURE) \
 	);
 endef
 
+ifeq ($(CONFIG_USE_GLIBC)$(CONFIG_INSTALL_GCCGO),yy)
+define FixGogccCrt
+	# link crtX.o for gotools
+	mkdir -p $(GCC_BUILD_DIR)/gotools
+	$(foreach crt, i 1 n, ln -sf ../../glibc-dev/lib/crt$(crt).o $(GCC_BUILD_DIR)/gotools/ ; )
+endef
+endif
+
 define Host/Compile
-	$(GCC_MAKE) -C $(GCC_BUILD_DIR) all
+	$(FixGogccCrt)
+	+$(GCC_MAKE) $(HOST_JOBS) -C $(GCC_BUILD_DIR) all
 endef
 
 define SetupExtraArch
@@ -59,7 +70,8 @@ define SetupExtraArch
 endef
 
 define Host/Install
-	$(_SINGLE)$(GCC_MAKE) -C $(GCC_BUILD_DIR) install
+	$(CleanupToolchain)
+	+$(GCC_MAKE) $(HOST_JOBS) -C $(GCC_BUILD_DIR) install
 	# Set up the symlinks to enable lying about target name.
 	set -e; \
 	(cd $(TOOLCHAIN_DIR); \
@@ -71,6 +83,7 @@ define Host/Install
 		done; \
 	);
 	$(if $(CONFIG_EXTRA_TARGET_ARCH),$(call SetupExtraArch))
+	$(RM) $(TOOLCHAIN_DIR)/lib/libiberty.a
 	$(SCRIPT_DIR)/patch-specs.sh "$(TOOLCHAIN_DIR)"
 endef
 

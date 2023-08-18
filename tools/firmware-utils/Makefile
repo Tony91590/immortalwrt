@@ -1,66 +1,21 @@
 #
-# Copyright (C) 2006-2011 OpenWrt.org
+# Copyright (C) 2006-2020 OpenWrt.org
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
 #
 include $(TOPDIR)/rules.mk
 
-PKG_NAME := firmware-utils
+PKG_NAME:=firmware-utils
+PKG_RELEASE:=1
+
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL=$(PROJECT_GIT)/project/firmware-utils.git
+PKG_SOURCE_DATE:=2023-06-29
+PKG_SOURCE_VERSION:=9e2de8515be15e2b61ae518ce592e5b446ef2d48
+PKG_MIRROR_HASH:=e43d1796dd482ec364e5196f224bb1563dbb0494f0f28fb4e206ef7ef31260fb
 
 include $(INCLUDE_DIR)/host-build.mk
-include $(INCLUDE_DIR)/kernel.mk
-
-define cc
-	$(HOSTCC) $(HOST_CFLAGS) -include endian.h -o $(HOST_BUILD_DIR)/bin/$(firstword $(1)) $(foreach src,$(1),src/$(src).c) $(2)
-endef
-
-define Host/Compile
-	mkdir -p $(HOST_BUILD_DIR)/bin
-	$(call cc,addpattern)
-	$(call cc,trx)
-	$(call cc,motorola-bin)
-	$(call cc,dgfirmware)
-	$(call cc,trx2usr)
-	$(call cc,ptgen)
-	$(call cc,airlink)
-	$(call cc,srec2bin)
-	$(call cc,mkmylofw)
-	$(call cc,mkcsysimg)
-	$(call cc,mkzynfw)
-	$(call cc,lzma2eva,-lz)
-	$(call cc,mkcasfw)
-	$(call cc,mkfwimage,-lz)
-	$(call cc,mkfwimage2,-lz)
-	$(call cc,imagetag imagetag_cmdline)
-	$(call cc,add_header)
-	$(call cc,makeamitbin)
-	$(call cc,encode_crc)
-	$(call cc,nand_ecc)
-	$(call cc,mkplanexfw sha1)
-	$(call cc,mktplinkfw md5)
-	$(call cc,pc1crypt)
-	$(call cc,osbridge-crc)
-	$(call cc,wrt400n cyg_crc32)
-	$(call cc,wndr3700)
-	$(call cc,mkdniimg)
-	$(call cc,mktitanimg)
-	$(call cc,mkchkimg)
-	$(call cc,mkzcfw cyg_crc32)
-	$(call cc,spw303v)
-	$(call cc,trx2edips)
-	$(call cc,xorimage)
-	$(call cc,buffalo-enc buffalo-lib, -Wall)
-	$(call cc,buffalo-tag buffalo-lib, -Wall)
-	$(call cc,buffalo-tftp buffalo-lib, -Wall)
-	$(call cc,mkwrgimg md5, -Wall)
-	$(call cc,mkedimaximg)
-	$(call cc,mkbrncmdline)
-	$(call cc,mkbrnimg)
-endef
-
-define Host/Install
-	$(INSTALL_BIN) $(HOST_BUILD_DIR)/bin/* $(STAGING_DIR_HOST)/bin/
-endef
+include $(INCLUDE_DIR)/cmake.mk
 
 $(eval $(call HostBuild))
