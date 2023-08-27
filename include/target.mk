@@ -55,7 +55,7 @@ DEFAULT_PACKAGES.nas:=\
 DEFAULT_PACKAGES.router:=\
 	dnsmasq-full \
 	firewall \
-	iptables \
+	iptables-zz-legacy \
 	kmod-ipt-offload \
 	ipv6helper \
 	ppp \
