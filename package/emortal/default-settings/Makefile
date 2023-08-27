@@ -22,7 +22,7 @@ define Package/default-settings
   SECTION:=luci
   CATEGORY:=LuCI
   TITLE:=LuCI support for Default Settings
-  DEPENDS:=+luci +@LUCI_LANG_fr +luci-i18n-base-fr
+  DEPENDS:=+luci
   PKGARCH:=all
 endef
 
