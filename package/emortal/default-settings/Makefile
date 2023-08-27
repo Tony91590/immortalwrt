@@ -22,7 +22,7 @@ define Package/default-settings
   SECTION:=luci
   CATEGORY:=LuCI
   TITLE:=LuCI support for Default Settings
-  DEPENDS:=+luci
+  DEPENDS:=+luci +@LUCI_LANG_fr +luci-i18n-base-fr
   PKGARCH:=all
 endef
 
@@ -50,4 +50,4 @@ define Package/default-settings-chn/install
 endef
 
 $(eval $(call BuildPackage,default-settings))
-$(eval $(call BuildPackage,default-settings-chn))
+#$(eval $(call BuildPackage,default-settings-chn))
