@@ -54,16 +54,16 @@ DEFAULT_PACKAGES.nas:=\
 # For router targets
 DEFAULT_PACKAGES.router:=\
 	dnsmasq-full \
-	firewall4 \
-	nftables \
-	kmod-nft-offload \
+	firewall \
+	iptables \
+	kmod-ipt-offload \
 	ipv6helper \
 	ppp \
 	ppp-mod-pppoe
 # For easy usage
 DEFAULT_PACKAGES.tweak:=\
 	block-mount \
-	default-settings-chn \
+	default-settings \
 	kmod-nf-nathelper \
 	kmod-nf-nathelper-extra \
 	luci \
