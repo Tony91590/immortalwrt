@@ -64,6 +64,7 @@ DEFAULT_PACKAGES.router:=\
 DEFAULT_PACKAGES.tweak:=\
 	block-mount \
 	default-settings \
+        kmod-ipt-raw \
 	kmod-nf-nathelper \
 	kmod-nf-nathelper-extra \
 	luci \
