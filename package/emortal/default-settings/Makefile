@@ -19,7 +19,7 @@ PKG_LICENSE:=GPL-3.0
 include $(INCLUDE_DIR)/package.mk
 
 define Package/default-settings
-  SECTION:=luci
+  SECTION:=luci +@LUCI_LANG_fr +luci-i18n-base-fr
   CATEGORY:=LuCI
   TITLE:=LuCI support for Default Settings
   DEPENDS:=+luci
