@@ -1,54 +1,56 @@
 #!/bin/sh
 
-
-kernel_ver="$(uname -r)"
-
-has_module_file() {
-	local module
-
-	for module in "$@"; do
-		set -- "/lib/modules/$kernel_ver/$module.ko"*
-		[ -e "$1" ] && return 0
-	done
-
-	return 1
+set_default() {
+	uci -q get "turboacc.config.$1" >/dev/null ||
+		uci -q set "turboacc.config.$1=$2"
 }
 
-if has_module_file "mtkhnat" "mediatek_hnat"; then
-	uci -q set "turboacc.config.fastpath"="mediatek_hnat"
-	uci -q set "turboacc.config.fastpath_mh_eth_hnat"="1"
-	uci -q set "turboacc.config.fastpath_mh_eth_hnat_v6"="1"
-	uci -q set "turboacc.config.fastpath_mh_eth_hnat_bind_rate"="30"
-elif has_module_file "fast-classifier"; then
-	uci -q set "turboacc.config.fastpath"="fast_classifier"
-	uci -q set "turboacc.config.fastpath_fc_br"="1"
-	if [ -d "/proc/sys/net/ipv6" ]; then
-		uci -q set "turboacc.config.fastpath_fc_ipv6"="1"
+[ -e /etc/config/turboacc ] || touch /etc/config/turboacc || exit 1
+
+uci -q get "turboacc.config" >/dev/null ||
+	uci -q set "turboacc.config=turboacc"
+
+# preserve existing settings, including an explicitly disabled engine.
+if ! uci -q get "turboacc.config.fastpath" >/dev/null; then
+	kernel_ver="$(uname -r)"
+
+	if [ -e "/lib/modules/$kernel_ver/mtkhnat.ko" ]; then
+		fastpath="mediatek_hnat"
+	elif [ -e "/lib/modules/$kernel_ver/fast-classifier.ko" ]; then
+		fastpath="fast_classifier"
+	elif [ -e "/lib/modules/$kernel_ver/shortcut-fe-cm.ko" ]; then
+		fastpath="shortcut_fe_cm"
 	else
-		uci -q set "turboacc.config.fastpath_fc_ipv6"="0"
+		fastpath="disabled"
 	fi
-elif has_module_file "shortcut-fe-cm"; then
-	uci -q set "turboacc.config.fastpath"="shortcut_fe_cm"
-else
-	uci -q set "turboacc.config.fastpath"="none"
+
+	uci -q set "turboacc.config.fastpath=$fastpath"
 fi
 
-if has_module_file "xt_FULLCONENAT"; then
-	uci -q set "turboacc.config.fullcone"="1"
-else
-	uci -q set "turboacc.config.fullcone"="2"
-fi
+case "$(uci -q get "turboacc.config.fastpath")" in
+mediatek_hnat)
+	set_default fastpath_mh_bind_rate 30
+	set_default fastpath_mh_update_nfct 0
+	;;
+fast_classifier)
+	set_default fastpath_fc_br 1
+	if [ -d "/proc/sys/net/ipv6" ]; then
+		set_default fastpath_fc_ipv6 1
+	else
+		set_default fastpath_fc_ipv6 0
+	fi
+	;;
+esac
+
+set_default tcpcca cubic
 
 uci -q commit "turboacc"
 
-uci -q batch <<-EOF >/dev/null
+uci -q batch <<-EOF >"/dev/null"
 	delete ucitrack.@turboacc[-1]
 	add ucitrack turboacc
-	set ucitrack.@turboacc[-1].init='turboacc'
-	set ucitrack.@turboacc[-1].config='turboacc'
+	set ucitrack.@turboacc[-1].init=turboacc
+	commit ucitrack
 EOF
 
-uci -q commit "ucitrack"
-
-rm -f /tmp/luci-indexcache
 exit 0
