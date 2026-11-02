@@ -13,29 +13,25 @@ local function readfile(path)
 	return s and (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+-- Check whether a MediaTek HNAT module exists
 local function module_file_exists(kernel, names)
-	local name
-
 	if not kernel or kernel == "" then
 		return false
 	end
 
 	for _, name in ipairs(names) do
-		if fs.access("/lib/modules/" .. kernel .. "/" .. name .. ".ko") or
-			fs.access("/lib/modules/" .. kernel .. "/" .. name .. ".ko.gz") or
-			fs.access("/lib/modules/" .. kernel .. "/" .. name .. ".ko.xz") or
-			fs.access("/lib/modules/" .. kernel .. "/" .. name .. ".ko.zst")
-		then
-			return true
+		for _, ext in ipairs({ ".ko", ".ko.gz", ".ko.xz", ".ko.zst" }) do
+			if fs.access("/lib/modules/" .. kernel .. "/" .. name .. ext) then
+				return true
+			end
 		end
 	end
 
 	return false
 end
 
+-- Check whether a module is already loaded
 local function module_loaded(names)
-	local name
-
 	for _, name in ipairs(names) do
 		if fs.stat("/sys/module/" .. name, "type") == "dir" then
 			return true
@@ -45,17 +41,22 @@ local function module_loaded(names)
 	return false
 end
 
+-- Check HNAT activation values
 local function is_hnat_enabled(value)
 	value = (value or ""):lower()
 
-	return value == "1" or value == "enabled" or value == "enable" or
-		value == "on" or value == "true" or value == "y" or value == "yes"
+	return value == "1" or value == "enabled" or
+		value == "enable" or value == "on" or
+		value == "true" or value == "y" or
+		value == "yes"
 end
 
+-- Check Ethernet HNAT hook
 local function hnat_hook_enabled()
 	return is_hnat_enabled(readfile("/sys/kernel/debug/hnat/hook_toggle"))
 end
 
+-- Check MediaTek wireless configuration
 local function has_mediatek_wireless_dat()
 	return fs.stat("/etc/wireless/mediatek", "type") == "dir" and
 		sys.call("set -- /etc/wireless/mediatek/*.dat; [ -e \"$1\" ]") == 0
@@ -65,87 +66,117 @@ local methods = {
 	getSystemFeatures = {
 		call = function()
 			local boardinfo = util.ubus("system", "board") or {}
-			local kernel    = tostring(boardinfo.kernel or "")
-			local features  = {
-				hasIPV6           = fs.access("/proc/net/ipv6_route"),
-				-- mt798x primary path is HNAT; other engines are user-selectable (kernel modules may be absent, init script handles gracefully)
-				hasFLOWOFFLOADING = true,
-				hasFASTCLASSIFIER = true,
-				hasSHORTCUTFECM   = true,
-				hasMEDIATEKHNAT   = module_file_exists(kernel, { "mtkhnat", "mediatek_hnat" }) or
+			local kernel = tostring(boardinfo.kernel or "")
+
+			local features = {
+				hasIPV6 = fs.access("/proc/net/ipv6_route"),
+
+				-- disable FLOWOFFLOADING for mt798x
+				hasFLOWOFFLOADING = false,
+
+				hasFASTCLASSIFIER = fs.access("/lib/modules/" .. kernel .. "/fast-classifier.ko"),
+				hasSHORTCUTFECM = fs.access("/lib/modules/" .. kernel .. "/shortcut-fe-cm.ko"),
+
+				-- MediaTek HNAT availability detection
+				hasMEDIATEKHNAT =
+					module_file_exists(kernel, { "mtkhnat", "mediatek_hnat" }) or
 					module_loaded({ "mtkhnat", "mediatek_hnat" }) or
 					fs.stat("/sys/kernel/debug/hnat", "type") == "dir",
-				hasXTFULLCONENAT  = module_file_exists(kernel, { "xt_FULLCONENAT" }) or module_loaded({ "xt_FULLCONENAT" }),
-				hasTCPCCA         = readfile("/proc/sys/net/ipv4/tcp_available_congestion_control")
+
+				hasXTFULLCONENAT = fs.access("/lib/modules/" .. kernel .. "/xt_FULLCONENAT.ko"),
+
+				hasTCPCCA = readfile("/proc/sys/net/ipv4/tcp_available_congestion_control")
 			}
+
 			print(json.stringify(features))
 		end
 	},
+
 	getFastPathStat = {
 		call = function()
 			local fptype
+
 			if fs.access("/sys/module/xt_FLOWOFFLOAD/refcnt") and
-			(readfile("/sys/module/xt_FLOWOFFLOAD/refcnt") or "0") ~= "0" then
+				(readfile("/sys/module/xt_FLOWOFFLOAD/refcnt") or "0") ~= "0"
+			then
 				fptype = "Flow offloading"
+
 			elseif fs.stat("/sys/module/fast_classifier", "type") == "dir" then
 				fptype = "Fast classifier"
+
 			elseif fs.stat("/sys/module/shortcut_fe_cm", "type") == "dir" then
 				fptype = "Shortcut-FE CM"
-			elseif (fs.stat("/sys/kernel/debug/hnat", "type") == "dir" or module_loaded({ "mtkhnat", "mediatek_hnat" })) and
-				hnat_hook_enabled()
-			then
+
+			-- MediaTek HNAT runtime detection
+			elseif (
+				fs.stat("/sys/kernel/debug/hnat", "type") == "dir" or
+				module_loaded({ "mtkhnat", "mediatek_hnat" })
+			) and hnat_hook_enabled() then
+
 				local hnat_note = ""
 
 				if has_mediatek_wireless_dat() and
-					sys.call("grep -q 'WHNAT=1' /etc/wireless/mediatek/*.dat") ~= 0
+					sys.call("grep -q 'WHNAT=1' /etc/wireless/mediatek/*.dat 2>/dev/null") ~= 0
 				then
 					hnat_note = " / HNAT Partially Enabled"
 				end
 
 				fptype = "MediaTek HNAT" .. hnat_note
 			end
+
 			print(json.stringify({ type = fptype }))
 		end
 	},
+
 	getFullConeStat = {
 		call = function()
 			local fctype
+
 			if fs.access("/sys/module/xt_FULLCONENAT/refcnt") and
-			(readfile("/sys/module/xt_FULLCONENAT/refcnt") or "0") ~= "0" then
+				(readfile("/sys/module/xt_FULLCONENAT/refcnt") or "0") ~= "0"
+			then
 				fctype = "xt_FULLCONENAT"
-			elseif  fs.access("/proc/sys/net/netfilter/nf_conntrack_nat_mode") and
-				(readfile("/proc/sys/net/netfilter/nf_conntrack_nat_mode") or "0") ~= "0" then
+
+			elseif fs.access("/proc/sys/net/netfilter/nf_conntrack_nat_mode") and
+				(readfile("/proc/sys/net/netfilter/nf_conntrack_nat_mode") or "0") ~= "0"
+			then
 				fctype = "Boardcom Fullcone"
 			end
+
 			print(json.stringify({ type = fctype }))
 		end
 	},
+
 	getTCPCCAStat = {
 		call = function()
 			local ccatype = readfile("/proc/sys/net/ipv4/tcp_congestion_control")
 			ccatype = ccatype and ccatype:upper() or nil
+
 			print(json.stringify({ type = ccatype }))
 		end
 	},
+
 	getMTKPPEStat = {
 		call = function()
 			local ppe_stat = {}
 			local ppe_path = "/sys/kernel/debug/hnat/hnat_stats"
 
+			-- PPE statistics are only available when HNAT is enabled
 			if not hnat_hook_enabled() then
 				ppe_stat.PPE_NUM = "0"
 				print(json.stringify(ppe_stat))
 				return
 			end
 
+			-- Try alternative PPE statistics locations
 			if not fs.access(ppe_path) then
-				-- try alternate locations
 				local alts = {
-					"/sys/kernel/debug/hnat/hnat_stats",
 					"/sys/kernel/debug/mtk_hnat/hnat_stats",
 					"/sys/kernel/debug/ppe0/bind"
 				}
+
 				local found = false
+
 				for _, alt in ipairs(alts) do
 					if fs.access(alt) then
 						ppe_path = alt
@@ -153,6 +184,7 @@ local methods = {
 						break
 					end
 				end
+
 				if not found then
 					ppe_stat.PPE_NUM = "0"
 					print(json.stringify(ppe_stat))
@@ -160,100 +192,21 @@ local methods = {
 				end
 			end
 
-			local function ensure_ppe(index)
-				index = tonumber(index or "")
-				if not index then
-					return nil
-				end
-
-				local current = tonumber(ppe_stat.PPE_NUM or "0") or 0
-				if index + 1 > current then
-					ppe_stat.PPE_NUM = tostring(index + 1)
-				end
-
-				return tostring(index)
-			end
-
-			local function set_ppe_value(kind, index, value)
-				index = ensure_ppe(index)
-				value = tonumber(value or "")
-				if index and value then
-					ppe_stat[kind .. "_PPE" .. index] = tostring(value)
-				end
-			end
-
-			local function parse_compact_ppe_line(line)
-				local ppe = line:match("[Pp][Pp][Ee]%s*(%d+)")
-				local value
-
-				if not ppe then
-					return
-				end
-
-				value = line:match("[Bb][Ii][Nn][Dd]%w*%s*[:=]%s*(%d+)") or
-					line:match("[Bb][Oo][Uu][Nn][Dd]%w*%s*[:=]%s*(%d+)") or
-					line:match("[Bb][Ii][Nn][Dd]%w*%s+(%d+)") or
-					line:match("[Bb][Oo][Uu][Nn][Dd]%w*%s+(%d+)")
-				set_ppe_value("BIND", ppe, value)
-
-				value = line:match("[Aa][Ll][Ll]%w*%s*[:=]%s*(%d+)") or
-					line:match("[Ee][Nn][Tt][Rr][Yy]%w*%s*[:=]%s*(%d+)") or
-					line:match("[Ee][Nn][Tt][Rr][Ii][Ee][Ss]%w*%s*[:=]%s*(%d+)") or
-					line:match("[Tt][Oo][Tt][Aa][Ll]%w*%s*[:=]%s*(%d+)") or
-					line:match("[Aa][Ll][Ll]%w*%s+(%d+)") or
-					line:match("[Ee][Nn][Tt][Rr][Yy]%w*%s+(%d+)") or
-					line:match("[Ee][Nn][Tt][Rr][Ii][Ee][Ss]%w*%s+(%d+)") or
-					line:match("[Tt][Oo][Tt][Aa][Ll]%w*%s+(%d+)")
-				set_ppe_value("ALL", ppe, value)
-			end
-
-			local fd = io.open(ppe_path, 'r')
+			local fd = io.open(ppe_path, "r")
 
 			if fd then
 				for line in fd:lines() do
 					local i = string.find(line, "=")
+
 					if i then
-						local key = (string.sub(line, 1, i - 1):gsub("^%s+", ""):gsub("%s+$", ""))
-						local value = (string.sub(line, i + 1):gsub("^%s+", ""):gsub("%s+$", ""))
-						local ppe, kind = key:match("^[Pp][Pp][Ee]%s*(%d+)%s*[_%-%s%.]*(.+)$")
-						local reverse_kind, reverse_ppe = key:match("^(.+)%s*[_%-%s%.]*[Pp][Pp][Ee]%s*(%d+)$")
+						local key = string.sub(line, 1, i - 1):trim()
+						local value = string.sub(line, i + 1):trim()
 
-						if ppe and kind then
-							kind = kind:lower()
-
-							if kind:match("bind") or kind:match("bound") then
-								set_ppe_value("BIND", ppe, value)
-							elseif kind:match("all") or kind:match("entry") or kind:match("entries") or kind:match("total") then
-								set_ppe_value("ALL", ppe, value)
-							else
-								ppe_stat[key] = value
-							end
-						elseif reverse_kind and reverse_ppe then
-							reverse_kind = reverse_kind:lower()
-
-							if reverse_kind:match("bind") or reverse_kind:match("bound") then
-								set_ppe_value("BIND", reverse_ppe, value)
-							elseif reverse_kind:match("all") or reverse_kind:match("entry") or reverse_kind:match("entries") or reverse_kind:match("total") then
-								set_ppe_value("ALL", reverse_ppe, value)
-							else
-								ppe_stat[key] = value
-							end
-						else
-							ppe_stat[key] = value
-						end
-					else
-						parse_compact_ppe_line(line)
+						ppe_stat[key] = value
 					end
 				end
-				fd:close()
-			end
 
-			if ppe_stat.PPE_NUM then
-				local count = tonumber(ppe_stat.PPE_NUM) or 0
-				for index = 0, count - 1 do
-					ppe_stat["BIND_PPE" .. index] = ppe_stat["BIND_PPE" .. index] or "0"
-					ppe_stat["ALL_PPE" .. index] = ppe_stat["ALL_PPE" .. index] or "0"
-				end
+				fd:close()
 			end
 
 			print(json.stringify(ppe_stat))
@@ -267,6 +220,7 @@ local function parseInput()
 
 	while true do
 		local chunk = io.read(4096)
+
 		if not chunk then
 			break
 		elseif not done and not err then
@@ -284,6 +238,7 @@ end
 
 local function validateArgs(func, uargs)
 	local method = methods[func]
+
 	if not method then
 		print(json.stringify({ error = "Method not found" }))
 		os.exit(1)
@@ -298,9 +253,10 @@ local function validateArgs(func, uargs)
 
 	local k, v
 	local margs = method.args or {}
+
 	for k, v in pairs(uargs) do
 		if margs[k] == nil or
-		   (v ~= nil and type(v) ~= type(margs[k]))
+			(v ~= nil and type(v) ~= type(margs[k]))
 		then
 			print(json.stringify({ error = "Invalid arguments" }))
 			os.exit(1)
@@ -312,11 +268,19 @@ end
 
 if arg[1] == "list" then
 	local _, method, rv = nil, nil, {}
-	for _, method in pairs(methods) do rv[_] = method.args or {} end
+
+	for _, method in pairs(methods) do
+		rv[_] = method.args or {}
+	end
+
 	print((json.stringify(rv):gsub(":%[%]", ":{}")))
+
 elseif arg[1] == "call" then
 	local args = parseInput()
 	local method = validateArgs(arg[2], args)
-	method.call(args)
-	os.exit(0)
+
+	local result, code = method.call(args)
+
+	print((json.stringify(result):gsub("^%[%]$", "{}")))
+	os.exit(code or 0)
 end
