@@ -8,7 +8,7 @@ parse_device() {
 	local cfg="$1"
 
 	local enabled
-	config_get_bool enabled "$cfg" "enabled" "0"
+	config_get_bool enabled "$cfg" "enabled" "1"
 	[ "$enabled" -eq "1" ] || return 1
 	
 

@@ -1351,6 +1351,7 @@ return view.extend({
 					o.depends('mode', 'sta');
 
 					o = ss.taboption('advanced', form.Flag, 'ieee80211k', _('802.11k'), _('Enables The 802.11k standard provides information to discover the best available access point'));
+					o.default = o.enabled;
 					o.depends('mode', 'ap');
 
 					o = ss.taboption('advanced', form.Flag, 'bss_transition', _('BSS Transition'), _('802.11v: Basic Service Set (BSS) transition management.'));
@@ -1359,7 +1360,7 @@ return view.extend({
 
 					o = ss.taboption('advanced', form.Value, 'wpa_group_rekey', _('Time interval for rekeying GTK'), _('sec'));
 					o.optional    = true;
-					o.placeholder = 86400;
+					o.placeholder = 3600;
 					o.datatype    = 'uinteger';
 					o.depends('mode', 'ap');
 
@@ -1387,7 +1388,7 @@ return view.extend({
 
 					o = ss.taboption('advanced', form.Value, 'dtim_period', _('DTIM Interval'), _('Delivery Traffic Indication Message Interval'));
 					o.optional = true;
-					o.placeholder = 3;
+					o.placeholder = 1;
 					o.datatype = 'range(1,255)';
 					o.depends('mode', 'ap');
 
@@ -1417,7 +1418,7 @@ return view.extend({
 
 					o = ss.taboption('advanced', form.Flag, 'uapsd', _('U-APSD'));
 					o.depends('mode', 'ap');
-					o.default = o.disabled;
+					o.default = o.enabled;
 				}
 
 				encr = o = ss.taboption('encryption', form.ListValue, 'encryption', _('Encryption'));
@@ -1620,7 +1621,6 @@ return view.extend({
 					crypto_modes.push(['sae', 'WPA3-SAE', 31]);
 					crypto_modes.push(['owe', 'OWE', 1]);
 					if (band != '6g') {
-						crypto_modes.push(['sae-mixed', 'WPA2-PSK/WPA3-SAE Mixed Mode', 30]);
 						crypto_modes.push(['psk2', 'WPA2-PSK', 35]);
 						crypto_modes.push(['psk', 'WPA-PSK', 12]);
 						if (ifmode == 'ap') {
